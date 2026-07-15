@@ -11,6 +11,10 @@
 
 Gaming Tweak Forgeは、レジストリ設定を手入力または`.reg`ファイルから取り込み、メニュー形式のBATとして書き出すElectronアプリです。適用前の値をTweakごとに保存し、状態ファイルが利用できる値を個別または一括で復元できます。
 
+<p align="center">
+  <img src="assets/app-screenshot.png" alt="Gaming Tweak Forge application screenshot" width="1200">
+</p>
+
 ## Features
 
 - `HKCU`、`HKLM`、`HKCR`、`HKU`、`HKCC`の値を追加・更新・削除
