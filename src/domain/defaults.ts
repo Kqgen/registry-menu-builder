@@ -20,7 +20,7 @@ export const DEFAULT_PROJECT: RegistryProject = {
   title: "My Gaming Tweaks",
   bannerText: "GAME TWEAK",
   bannerStyle: "umbra",
-  subtitle: "Tune locally. Back up first. Roll back anytime.",
+  subtitle: "Tune locally. Back up first. Restore when state is available.",
   theme: "amber",
   tweaks: [DEFAULT_TWEAK],
 };
