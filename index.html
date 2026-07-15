@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="./icon.png" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:*; object-src 'none'; frame-src 'none'; base-uri 'self'" />
+    <meta name="description" content="ゲーム向けレジストリTweakをASCIIメニュー付きWindowsバッチへまとめるローカルアプリ" />
+    <title>Gaming Tweak Forge</title>
+  </head>
+  <body>
+    <header class="masthead">
+      <a class="brand" href="#top" aria-label="Gaming Tweak Forge ホーム">
+        <img class="brand-mark" src="./icon.png" alt="" />
+        <span>Gaming Tweak Forge</span>
+      </a>
+      <div class="header-actions">
+        <button id="reg-import-button" class="button primary" type="button">REGを一括取込</button>
+        <button id="import-button" class="button ghost" type="button">JSONを読込</button>
+        <button id="export-button" class="button ghost" type="button">JSONを保存</button>
+        <button id="download-button" class="button primary" type="button">Tweak BATを保存</button>
+        <input id="reg-import-input" type="file" accept=".reg" multiple hidden />
+        <input id="import-input" type="file" accept="application/json,.json" hidden />
+      </div>
+    </header>
+
+    <main id="top" class="app-shell">
+      <section class="intro panel">
+        <div>
+          <p class="eyebrow">LOCAL GAMING TWEAK WORKBENCH</p>
+          <h1>Tweakを入れる。<br />自分のツールになる。</h1>
+          <p class="lede">レジストリ値を手入力するか、複数設定を含むREGファイルをまとめて取り込みます。生成BATは適用前の値を退避し、Tweak単位でも一括でもロールバックできます。</p>
+        </div>
+        <div class="status-card">
+          <span class="status-dot" aria-hidden="true"></span>
+          <div>
+            <strong id="project-status">準備完了</strong>
+            <span id="project-summary">1 gaming tweak / local project</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="workspace">
+        <div class="editor-column">
+          <section class="panel section-panel" aria-labelledby="identity-heading">
+            <div class="section-heading">
+              <div>
+                <p class="step">01 / TWEAK IDENTITY</p>
+                <h2 id="identity-heading">ツールのルック</h2>
+              </div>
+              <span class="section-note">タイトル・ASCIIロゴ・コンソールカラー</span>
+            </div>
+            <div class="field-grid">
+              <label class="field wide">
+                <span>Tweakツール名</span>
+                <input id="project-title" type="text" maxlength="60" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>ASCIIロゴ文字</span>
+                <input id="banner-text" type="text" maxlength="14" autocomplete="off" spellcheck="false" />
+                <small>A–Z / 0–9 / 空白 / ハイフン</small>
+              </label>
+              <label class="field">
+                <span>ASCIIスタイル</span>
+                <select id="banner-style">
+                  <option value="apex">APEX SLAB / 半ブロック</option>
+                  <option value="drift">DRIFT EDGE / 前傾スキャン</option>
+                  <option value="ghost">GHOST VECTOR / 発光ノード</option>
+                  <option value="umbra">UMBRA DROP / 影落とし</option>
+                  <option value="ember">EMBER DECAY / 崩壊シェード</option>
+                </select>
+              </label>
+              <label class="field wide">
+                <span>サブタイトル</span>
+                <input id="project-subtitle" type="text" maxlength="80" autocomplete="off" />
+              </label>
+            </div>
+            <div class="ascii-stage" aria-label="ASCIIロゴのプレビュー">
+              <span>LIVE ASCII</span>
+              <pre id="ascii-art-preview"></pre>
+            </div>
+            <fieldset class="theme-fieldset">
+              <legend>コンソールテーマ</legend>
+              <div id="theme-options" class="theme-options"></div>
+            </fieldset>
+          </section>
+
+          <section class="panel section-panel" aria-labelledby="tweak-heading">
+            <div class="section-heading">
+              <div>
+                <p class="step">02 / TWEAK SETUP</p>
+                <h2 id="tweak-heading">Gaming Tweakを追加</h2>
+              </div>
+              <button id="cancel-edit-button" class="text-button" type="button" hidden>編集を取消</button>
+            </div>
+            <form id="tweak-form" novalidate>
+              <input id="tweak-id" type="hidden" />
+              <div class="field-grid">
+                <label class="field">
+                  <span>Tweak名</span>
+                  <input id="tweak-label" type="text" maxlength="60" required autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>Tweakグループ</span>
+                  <input id="tweak-group" type="text" maxlength="40" required autocomplete="off" />
+                </label>
+                <label class="field wide">
+                  <span>効果・目的</span>
+                  <input id="tweak-description" type="text" maxlength="120" required autocomplete="off" />
+                </label>
+                <label class="field compact">
+                  <span>ハイブ</span>
+                  <select id="tweak-hive"></select>
+                </label>
+                <label class="field path-field">
+                  <span>キーパス</span>
+                  <input id="tweak-key-path" type="text" maxlength="220" required autocomplete="off" spellcheck="false" />
+                </label>
+                <label class="field wide">
+                  <span>値の名前</span>
+                  <input id="tweak-value-name" type="text" maxlength="160" autocomplete="off" spellcheck="false" />
+                  <small>空欄はキーの既定値として扱います</small>
+                </label>
+                <label class="field compact">
+                  <span>Tweak操作</span>
+                  <select id="tweak-operation"></select>
+                </label>
+                <label class="field compact" data-value-control>
+                  <span>値の種類</span>
+                  <select id="tweak-value-type"></select>
+                </label>
+                <label class="field" data-value-control>
+                  <span>Tweakデータ</span>
+                  <textarea id="tweak-data" rows="3" maxlength="2000" spellcheck="false"></textarea>
+                  <small id="data-hint"></small>
+                </label>
+                <label class="field compact">
+                  <span>注意度</span>
+                  <select id="tweak-risk"></select>
+                </label>
+              </div>
+              <div id="form-errors" class="form-errors" role="alert" hidden></div>
+              <button id="save-tweak-button" class="button add-button" type="submit">
+                <span aria-hidden="true">＋</span>
+                <span>Tweakを追加</span>
+              </button>
+            </form>
+          </section>
+
+          <section class="panel section-panel" aria-labelledby="loadout-heading">
+            <div class="section-heading">
+              <div>
+                <p class="step">03 / TWEAK LOADOUT</p>
+                <h2 id="loadout-heading">Gaming Tweak一覧</h2>
+              </div>
+              <span id="tweak-count" class="count-badge">0</span>
+            </div>
+            <div id="tweak-list" class="tweak-list"></div>
+          </section>
+        </div>
+
+        <aside class="preview-column" aria-labelledby="preview-heading">
+          <section class="preview-panel">
+            <div class="terminal-bar">
+              <div class="terminal-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+              <div>
+                <span>LIVE TWEAK OUTPUT</span>
+                <strong id="preview-heading">gaming-tweaks.bat</strong>
+              </div>
+              <button id="copy-button" class="copy-button" type="button">コピー</button>
+            </div>
+            <pre id="batch-preview" tabindex="0" aria-live="polite"></pre>
+          </section>
+          <div class="safety-note">
+            <span aria-hidden="true">◆</span>
+            <p><strong>適用直前の値を初回だけ保存。</strong>バックアップはBATと同じ場所の <code>.tweakforge-state</code> に保持され、利用可能なTweakだけを元へ戻します。</p>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

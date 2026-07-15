@@ -1,0 +1,55 @@
+{
+  "name": "gaming-tweak-forge",
+  "private": true,
+  "version": "0.2.0",
+  "description": "Local Windows app for composing reversible gaming registry tweak batches",
+  "author": "Gaming Tweak Forge contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kqgen/registry-menu-builder.git"
+  },
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "desktop": "npm run build && electron .",
+    "desktop:smoke": "npm run build && electron . --smoke-test",
+    "package:win": "npm run build && electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "electron": "43.1.1",
+    "electron-builder": "26.15.3",
+    "typescript": "7.0.2",
+    "vite": "8.1.4",
+    "vitest": "4.1.10"
+  },
+  "build": {
+    "appId": "dev.kagen.gamingtweakforge",
+    "productName": "Gaming Tweak Forge",
+    "electronDist": "node_modules/electron/dist",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "LICENSE",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Gaming-Tweak-Forge-${version}-portable.${ext}"
+    }
+  }
+}
