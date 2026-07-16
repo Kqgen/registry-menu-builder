@@ -13,19 +13,21 @@ import {
   type RegistryValueType,
   type ValidationIssue,
 } from "./types.ts";
+import { VALIDATION_COPY, type ValidationCopy } from "../i18n/domainCopy.ts";
+import type { AppLocale } from "../i18n/locale.ts";
 
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u;
 const SAFE_ID = /^[a-z][a-z0-9_]{2,47}$/u;
 const BANNER_TEXT = /^[A-Za-z0-9 -]+$/u;
 
-function parseInteger(data: string, max: bigint): bigint {
+function parseInteger(data: string, max: bigint, copy: ValidationCopy): bigint {
   const normalized = data.trim();
   if (!/^(?:0[xX][0-9a-fA-F]+|[0-9]+)$/u.test(normalized)) {
-    throw new Error("10進数または0xで始まる16進数を入力してください");
+    throw new Error(copy.decimalOrHex);
   }
   const value = BigInt(normalized);
   if (value < 0n || value > max) {
-    throw new Error(`0〜${max.toString()}の範囲で入力してください`);
+    throw new Error(copy.integerRange(max.toString()));
   }
   return value;
 }
@@ -33,7 +35,9 @@ function parseInteger(data: string, max: bigint): bigint {
 export function parseRegistryData(
   valueType: RegistryValueType,
   data: string,
+  locale: AppLocale = "ja",
 ): ParsedRegistryData {
+  const copy = VALIDATION_COPY[locale];
   if (valueType === "REG_SZ" || valueType === "REG_EXPAND_SZ") {
     return { kind: "string", value: data };
   }
@@ -48,7 +52,7 @@ export function parseRegistryData(
     }
     const tokens = normalized.split(/[\s,;-]+/u);
     if (tokens.some((token) => !/^[0-9a-fA-F]{2}$/u.test(token))) {
-      throw new Error("2桁の16進バイトを空白かカンマで区切ってください");
+      throw new Error(copy.binaryBytes);
     }
     return {
       kind: "binary",
@@ -56,11 +60,11 @@ export function parseRegistryData(
     };
   }
   if (valueType === "REG_DWORD") {
-    return { kind: "integer", value: parseInteger(data, 0xffff_ffffn) };
+    return { kind: "integer", value: parseInteger(data, 0xffff_ffffn, copy) };
   }
   return {
     kind: "integer",
-    value: parseInteger(data, 0xffff_ffff_ffff_ffffn),
+    value: parseInteger(data, 0xffff_ffff_ffff_ffffn, copy),
   };
 }
 
@@ -70,13 +74,14 @@ function pushTextIssue(
   value: string,
   label: string,
   maxLength: number,
+  copy: ValidationCopy,
 ): void {
   if (value.trim().length === 0) {
-    issues.push({ path, message: `${label}は必須です` });
+    issues.push({ path, message: copy.required(label) });
   } else if (value.length > maxLength) {
-    issues.push({ path, message: `${label}は${maxLength}文字以内です` });
+    issues.push({ path, message: copy.maxLength(label, maxLength) });
   } else if (CONTROL_CHARACTERS.test(value)) {
-    issues.push({ path, message: `${label}に制御文字は使えません` });
+    issues.push({ path, message: copy.controlCharacters(label) });
   }
 }
 
@@ -86,38 +91,41 @@ function pushOptionalTextIssue(
   value: string,
   label: string,
   maxLength: number,
+  copy: ValidationCopy,
 ): void {
   if (value.length > maxLength) {
-    issues.push({ path, message: `${label}は${maxLength}文字以内です` });
+    issues.push({ path, message: copy.maxLength(label, maxLength) });
   } else if (CONTROL_CHARACTERS.test(value)) {
-    issues.push({ path, message: `${label}に制御文字は使えません` });
+    issues.push({ path, message: copy.controlCharacters(label) });
   }
 }
 
 export function validateTweak(
   tweak: RegistryTweak,
   path = "tweak",
+  locale: AppLocale = "ja",
 ): ValidationIssue[] {
+  const copy = VALIDATION_COPY[locale];
   const issues: ValidationIssue[] = [];
   if (!SAFE_ID.test(tweak.id)) {
-    issues.push({ path: `${path}.id`, message: "内部IDの形式が不正です" });
+    issues.push({ path: `${path}.id`, message: copy.internalIdInvalid });
   }
-  pushTextIssue(issues, `${path}.label`, tweak.label, "表示名", 60);
-  pushTextIssue(issues, `${path}.group`, tweak.group, "グループ", 40);
-  pushTextIssue(issues, `${path}.description`, tweak.description, "説明", 120);
-  pushTextIssue(issues, `${path}.keyPath`, tweak.keyPath, "キーパス", 220);
-  pushOptionalTextIssue(issues, `${path}.valueName`, tweak.valueName, "値の名前", 160);
+  pushTextIssue(issues, `${path}.label`, tweak.label, copy.labels.displayName, 60, copy);
+  pushTextIssue(issues, `${path}.group`, tweak.group, copy.labels.group, 40, copy);
+  pushTextIssue(issues, `${path}.description`, tweak.description, copy.labels.description, 120, copy);
+  pushTextIssue(issues, `${path}.keyPath`, tweak.keyPath, copy.labels.keyPath, 220, copy);
+  pushOptionalTextIssue(issues, `${path}.valueName`, tweak.valueName, copy.labels.valueName, 160, copy);
   if (!HIVES.includes(tweak.hive)) {
-    issues.push({ path: `${path}.hive`, message: "レジストリハイブが不正です" });
+    issues.push({ path: `${path}.hive`, message: copy.hiveInvalid });
   }
   if (!OPERATIONS.includes(tweak.operation)) {
-    issues.push({ path: `${path}.operation`, message: "Tweak操作が不正です" });
+    issues.push({ path: `${path}.operation`, message: copy.operationInvalid });
   }
   if (!VALUE_TYPES.includes(tweak.valueType)) {
-    issues.push({ path: `${path}.valueType`, message: "値の種類が不正です" });
+    issues.push({ path: `${path}.valueType`, message: copy.valueTypeInvalid });
   }
   if (!RISK_LEVELS.includes(tweak.risk)) {
-    issues.push({ path: `${path}.risk`, message: "注意度が不正です" });
+    issues.push({ path: `${path}.risk`, message: copy.riskInvalid });
   }
   if (
     tweak.keyPath.startsWith("\\") ||
@@ -128,25 +136,25 @@ export function validateTweak(
   ) {
     issues.push({
       path: `${path}.keyPath`,
-      message: "キーパスにハイブ、プロバイダー、リモート指定、空の階層は含められません",
+      message: copy.keyPathInvalid,
     });
   }
   if (tweak.operation === "set") {
     if (tweak.data.length > 2000) {
-      issues.push({ path: `${path}.data`, message: "データは2000文字以内です" });
+      issues.push({ path: `${path}.data`, message: copy.dataTooLong });
     } else if (
       tweak.valueType === "REG_MULTI_SZ"
         ? /[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(tweak.data)
         : CONTROL_CHARACTERS.test(tweak.data)
     ) {
-      issues.push({ path: `${path}.data`, message: "データに使用できない制御文字があります" });
+      issues.push({ path: `${path}.data`, message: copy.dataControlCharacters });
     } else {
       try {
-        parseRegistryData(tweak.valueType, tweak.data);
+        parseRegistryData(tweak.valueType, tweak.data, locale);
       } catch (error) {
         issues.push({
           path: `${path}.data`,
-          message: error instanceof Error ? error.message : "データの形式が不正です",
+          message: error instanceof Error ? error.message : copy.dataInvalid,
         });
       }
     }
@@ -154,42 +162,43 @@ export function validateTweak(
   return issues;
 }
 
-export function validateProject(project: RegistryProject): ValidationIssue[] {
+export function validateProject(project: RegistryProject, locale: AppLocale = "ja"): ValidationIssue[] {
+  const copy = VALIDATION_COPY[locale];
   const issues: ValidationIssue[] = [];
   if (!SAFE_ID.test(project.projectId)) {
-    issues.push({ path: "projectId", message: "プロジェクトIDの形式が不正です" });
+    issues.push({ path: "projectId", message: copy.projectIdInvalid });
   }
-  pushTextIssue(issues, "title", project.title, "ツール名", 60);
-  pushTextIssue(issues, "subtitle", project.subtitle, "サブタイトル", 80);
+  pushTextIssue(issues, "title", project.title, copy.labels.toolName, 60, copy);
+  pushTextIssue(issues, "subtitle", project.subtitle, copy.labels.subtitle, 80, copy);
   if (!THEME_IDS.includes(project.theme)) {
-    issues.push({ path: "theme", message: "コンソールテーマが不正です" });
+    issues.push({ path: "theme", message: copy.themeInvalid });
   }
   if (!BANNER_TEXT.test(project.bannerText) || project.bannerText.length > 14) {
     issues.push({
       path: "bannerText",
-      message: "ASCII文字はA–Z、0–9、空白、ハイフンの14文字以内です",
+      message: copy.bannerTextInvalid,
     });
   }
   if (!BANNER_STYLE_IDS.includes(project.bannerStyle)) {
-    issues.push({ path: "bannerStyle", message: "ASCIIスタイルが不正です" });
+    issues.push({ path: "bannerStyle", message: copy.bannerStyleInvalid });
   }
   if (project.tweaks.length === 0) {
-    issues.push({ path: "tweaks", message: "Gaming Tweakを1件以上追加してください" });
+    issues.push({ path: "tweaks", message: copy.tweakRequired });
   }
   if (project.tweaks.length > MAX_TWEAKS) {
-    issues.push({ path: "tweaks", message: `Gaming Tweakは${MAX_TWEAKS}件までです` });
+    issues.push({ path: "tweaks", message: copy.tooManyTweaks(MAX_TWEAKS) });
   }
   const ids = new Set<string>();
   const targets = new Set<string>();
   for (const [index, tweak] of project.tweaks.entries()) {
-    issues.push(...validateTweak(tweak, `tweaks.${index}`));
+    issues.push(...validateTweak(tweak, `tweaks.${index}`, locale));
     if (ids.has(tweak.id)) {
-      issues.push({ path: `tweaks.${index}.id`, message: "内部IDが重複しています" });
+      issues.push({ path: `tweaks.${index}.id`, message: copy.duplicateId });
     }
     ids.add(tweak.id);
     const target = `${tweak.hive}\\${tweak.keyPath}\\${tweak.valueName}`.toLocaleLowerCase("en-US");
     if (targets.has(target)) {
-      issues.push({ path: `tweaks.${index}`, message: "同じレジストリ値が重複しています" });
+      issues.push({ path: `tweaks.${index}`, message: copy.duplicateTarget });
     }
     targets.add(target);
   }
@@ -252,29 +261,30 @@ export type ProjectParseResult =
   | { readonly ok: true; readonly project: RegistryProject }
   | { readonly ok: false; readonly errors: readonly string[] };
 
-export function parseProjectJson(json: string): ProjectParseResult {
+export function parseProjectJson(json: string, locale: AppLocale = "ja"): ProjectParseResult {
+  const copy = VALIDATION_COPY[locale];
   if (
     json.length > MAX_PROJECT_JSON_BYTES ||
     new TextEncoder().encode(json).length > MAX_PROJECT_JSON_BYTES
   ) {
     return {
       ok: false,
-      errors: [`JSONは${MAX_PROJECT_JSON_BYTES / 1_048_576}MB以下にしてください`],
+      errors: [copy.jsonTooLarge(MAX_PROJECT_JSON_BYTES / 1_048_576)],
     };
   }
   let value: unknown;
   try {
     value = JSON.parse(json) as unknown;
   } catch {
-    return { ok: false, errors: ["JSONの構文が不正です"] };
+    return { ok: false, errors: [copy.jsonSyntaxInvalid] };
   }
   if (!isRecord(value) || value["version"] !== 1 || !Array.isArray(value["tweaks"])) {
-    return { ok: false, errors: ["schema v1のプロジェクトではありません"] };
+    return { ok: false, errors: [copy.schemaInvalid] };
   }
   const legacyKeys = ["version", "projectId", "title", "bannerText", "subtitle", "theme", "tweaks"];
   const currentKeys = [...legacyKeys, "bannerStyle"];
   if (!hasExactKeys(value, legacyKeys) && !hasExactKeys(value, currentKeys)) {
-    return { ok: false, errors: ["未対応のプロジェクト項目が含まれています"] };
+    return { ok: false, errors: [copy.unsupportedProjectFields] };
   }
   if (
     typeof value["projectId"] !== "string" ||
@@ -284,11 +294,11 @@ export function parseProjectJson(json: string): ProjectParseResult {
     !isEnumValue(THEME_IDS, value["theme"]) ||
     (value["bannerStyle"] !== undefined && !isEnumValue(BANNER_STYLE_IDS, value["bannerStyle"]))
   ) {
-    return { ok: false, errors: ["プロジェクト情報の型が不正です"] };
+    return { ok: false, errors: [copy.projectTypeInvalid] };
   }
   const tweaks = value["tweaks"].map(parseTweak);
   if (tweaks.some((tweak) => tweak === undefined)) {
-    return { ok: false, errors: ["Gaming Tweakの型が不正です"] };
+    return { ok: false, errors: [copy.tweakTypeInvalid] };
   }
   const project: RegistryProject = {
     version: 1,
@@ -300,7 +310,7 @@ export function parseProjectJson(json: string): ProjectParseResult {
     theme: value["theme"],
     tweaks: tweaks as RegistryTweak[],
   };
-  const issues = validateProject(project);
+  const issues = validateProject(project, locale);
   if (issues.length > 0) {
     return { ok: false, errors: issues.map((issue) => issue.message) };
   }

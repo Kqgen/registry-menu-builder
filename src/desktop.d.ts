@@ -2,6 +2,7 @@ interface SaveTextRequest {
   readonly filename: string;
   readonly content: string;
   readonly type: string;
+  readonly locale: "ja" | "en";
 }
 
 interface TweakForgeDesktopBridge {

@@ -4,49 +4,53 @@ import {
   OPERATIONS,
   RISK_LEVELS,
   VALUE_TYPES,
-  type RegistryOperation,
   type RegistryTweak,
   type RegistryValueType,
 } from "../domain/types.ts";
+import { BUILDER_COPY, type BuilderCopy } from "../i18n/builderCopy.ts";
 import { option, requireElement } from "./dom.ts";
 
-const OPERATION_LABELS: Readonly<Record<RegistryOperation, string>> = {
-  set: "値を設定",
-  delete: "値を削除",
-};
-
-const TYPE_HINTS: Readonly<Record<RegistryValueType, string>> = {
-  REG_SZ: "文字列をそのまま保存",
-  REG_EXPAND_SZ: "%PATH% などを展開せず保存",
-  REG_MULTI_SZ: "1行につき1要素",
-  REG_BINARY: "例: 01 ff a0 または 01,ff,a0",
-  REG_DWORD: "0〜4294967295、または0x形式",
-  REG_QWORD: "0〜18446744073709551615、または0x形式",
-};
-
-const RISK_LABELS = {
-  low: "低",
-  medium: "中",
-  high: "高",
-} as const;
+let activeCopy = BUILDER_COPY.ja;
 
 const form = () => requireElement("#tweak-form", HTMLFormElement);
 const input = (selector: string) => requireElement(selector, HTMLInputElement);
 const select = (selector: string) => requireElement(selector, HTMLSelectElement);
 const textarea = (selector: string) => requireElement(selector, HTMLTextAreaElement);
 
-export function initializeTweakForm(): void {
+export function initializeTweakForm(copy: BuilderCopy): void {
+  activeCopy = copy;
   const hive = select("#tweak-hive");
   HIVES.forEach((value) => hive.append(option(value, value)));
   const operation = select("#tweak-operation");
-  OPERATIONS.forEach((value) => operation.append(option(value, OPERATION_LABELS[value])));
+  OPERATIONS.forEach((value) => operation.append(option(value, activeCopy.operations[value])));
   const type = select("#tweak-value-type");
   VALUE_TYPES.forEach((value) => type.append(option(value, value)));
   const risk = select("#tweak-risk");
-  RISK_LEVELS.forEach((value) => risk.append(option(value, RISK_LABELS[value])));
+  RISK_LEVELS.forEach((value) => risk.append(option(value, activeCopy.formRisks[value])));
   operation.addEventListener("change", updateValueControls);
   type.addEventListener("change", updateDataHint);
   clearTweakForm();
+}
+
+export function setTweakFormLocale(copy: BuilderCopy): void {
+  activeCopy = copy;
+  OPERATIONS.forEach((value) => {
+    const entry = select("#tweak-operation").querySelector<HTMLOptionElement>(`option[value="${value}"]`);
+    if (entry !== null) {
+      entry.textContent = activeCopy.operations[value];
+    }
+  });
+  RISK_LEVELS.forEach((value) => {
+    const entry = select("#tweak-risk").querySelector<HTMLOptionElement>(`option[value="${value}"]`);
+    if (entry !== null) {
+      entry.textContent = activeCopy.formRisks[value];
+    }
+  });
+  updateDataHint();
+  const editing = !requireElement("#cancel-edit-button", HTMLButtonElement).hidden;
+  requireElement("#save-tweak-button", HTMLButtonElement).lastElementChild!.textContent = editing
+    ? activeCopy.updateTweak
+    : activeCopy.addTweak;
 }
 
 export function readTweakForm(): RegistryTweak {
@@ -79,14 +83,14 @@ export function fillTweakForm(tweak: RegistryTweak): void {
   select("#tweak-risk").value = tweak.risk;
   updateValueControls();
   updateDataHint();
-  requireElement("#save-tweak-button", HTMLButtonElement).lastElementChild!.textContent = "Tweakを更新";
+  requireElement("#save-tweak-button", HTMLButtonElement).lastElementChild!.textContent = activeCopy.updateTweak;
   requireElement("#cancel-edit-button", HTMLButtonElement).hidden = false;
   form().scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 export function clearTweakForm(): void {
   fillTweakFormValues(createEmptyTweak());
-  requireElement("#save-tweak-button", HTMLButtonElement).lastElementChild!.textContent = "Tweakを追加";
+  requireElement("#save-tweak-button", HTMLButtonElement).lastElementChild!.textContent = activeCopy.addTweak;
   requireElement("#cancel-edit-button", HTMLButtonElement).hidden = true;
   hideFormErrors();
 }
@@ -118,7 +122,7 @@ function updateValueControls(): void {
 
 function updateDataHint(): void {
   const type = select("#tweak-value-type").value as RegistryValueType;
-  requireElement("#data-hint", HTMLElement).textContent = TYPE_HINTS[type];
+  requireElement("#data-hint", HTMLElement).textContent = activeCopy.typeHints[type];
 }
 
 export function showFormErrors(messages: readonly string[]): void {

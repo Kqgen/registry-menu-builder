@@ -1,6 +1,7 @@
 const { app, BrowserWindow, clipboard, dialog, ipcMain } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { runSmokeTest } = require("./smoke.cjs");
 const { validClipboardContent, validSaveRequest } = require("./text-contracts.cjs");
 
 const smokeTest = process.argv.includes("--smoke-test");
@@ -11,8 +12,8 @@ ipcMain.handle("save-text", async (_event, request) => {
   }
   const extension = path.extname(request.filename).toLowerCase();
   const filter = extension === ".json"
-    ? { name: "Tweak project", extensions: ["json"] }
-    : { name: "Gaming Tweak BAT", extensions: ["bat"] };
+    ? { name: request.locale === "ja" ? "Tweakプロジェクト" : "Tweak project", extensions: ["json"] }
+    : { name: request.locale === "ja" ? "Gaming Tweak BATファイル" : "Gaming Tweak BAT file", extensions: ["bat"] };
   const result = await dialog.showSaveDialog({
     defaultPath: path.join(app.getPath("documents"), request.filename),
     filters: [filter],
@@ -61,16 +62,7 @@ function createWindow() {
       return;
     }
     try {
-      const valid = await window.webContents.executeJavaScript(`
-        document.title === "Gaming Tweak Forge" &&
-        location.protocol === "file:" &&
-        document.querySelector("#tweak-form") !== null &&
-        document.querySelector("#reg-import-button") !== null &&
-        document.querySelector("#ascii-art-preview")?.textContent.length > 0 &&
-        typeof window.tweakForge?.saveText === "function" &&
-        typeof window.tweakForge?.copyText === "function"
-      `);
-      app.exit(valid ? 0 : 1);
+      app.exit(await runSmokeTest(window) ? 0 : 1);
     } catch {
       app.exit(1);
     }

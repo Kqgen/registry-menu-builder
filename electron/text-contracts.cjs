@@ -11,7 +11,8 @@ function validSaveRequest(request) {
     /^[^<>:"/\\|?*\u0000-\u001f]{1,80}$/u.test(request.filename) &&
     validClipboardContent(request.content) &&
     typeof request.type === "string" &&
-    request.type.length <= 96;
+    request.type.length <= 96 &&
+    (request.locale === "ja" || request.locale === "en");
 }
 
 module.exports = { MAX_TEXT_CHARS, validClipboardContent, validSaveRequest };

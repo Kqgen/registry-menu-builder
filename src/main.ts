@@ -6,7 +6,10 @@ import { MAX_PROJECT_JSON_BYTES, type BannerStyleId, type RegistryProject, type 
 import { parseProjectJson, validateProject } from "./domain/validation.ts";
 import { renderStyledAsciiBanner } from "./generator/ascii.ts";
 import { generateBatch, projectFilename } from "./generator/batch.ts";
-import { MAX_REG_IMPORT_BYTES, parseRegFile } from "./import/regFile.ts";
+import { BUILDER_COPY } from "./i18n/builderCopy.ts";
+import { isAppLocale } from "./i18n/locale.ts";
+import { MAX_REG_IMPORT_BYTES, parseRegFile, RegImportError } from "./import/regFile.ts";
+import { loadLocale, saveLocale } from "./state/locale.ts";
 import { loadProject, saveProject } from "./state/storage.ts";
 import { requireElement } from "./ui/dom.ts";
 import { copyText, downloadText } from "./ui/download.ts";
@@ -16,11 +19,17 @@ import {
   hideFormErrors,
   initializeTweakForm,
   readTweakForm,
+  setTweakFormLocale,
   showFormErrors,
 } from "./ui/form.ts";
+import { captureRenderedFocus } from "./ui/focus.ts";
+import { applyDocumentLocale } from "./ui/localize.ts";
 import { renderAsciiPreview, renderThemeOptions, renderTweakList } from "./ui/render.ts";
 
-let project: RegistryProject = loadProject();
+let locale = loadLocale();
+let copy = BUILDER_COPY[locale];
+let project: RegistryProject = loadProject(locale);
+saveLocale(locale);
 let generatedBatch = "";
 let toastTimer: number | undefined;
 
@@ -32,6 +41,7 @@ const asciiPreview = requireElement("#ascii-art-preview", HTMLPreElement);
 const preview = requireElement("#batch-preview", HTMLPreElement);
 const themeOptions = requireElement("#theme-options", HTMLDivElement);
 const tweakList = requireElement("#tweak-list", HTMLDivElement);
+const languageInput = requireElement("#builder-language", HTMLSelectElement);
 
 function showToast(message: string): void {
   const toast = requireElement("#toast", HTMLDivElement);
@@ -51,32 +61,32 @@ function render(): void {
   subtitleInput.value = project.subtitle;
   renderThemeOptions(themeOptions, project.theme);
   preview.style.setProperty("--preview-accent", theme.swatch);
-  renderTweakList(tweakList, project);
+  renderTweakList(tweakList, project, copy);
   requireElement("#tweak-count", HTMLSpanElement).textContent = String(project.tweaks.length).padStart(2, "0");
-  requireElement("#project-summary", HTMLSpanElement).textContent = `${project.tweaks.length} gaming tweak${project.tweaks.length === 1 ? "" : "s"} / local project`;
+  requireElement("#project-summary", HTMLSpanElement).textContent = copy.summary(project.tweaks.length);
   requireElement("#preview-heading", HTMLElement).textContent = projectFilename(project, "bat");
   try {
     renderAsciiPreview(asciiPreview, renderStyledAsciiBanner(project.bannerText, project.bannerStyle), theme);
   } catch {
-    asciiPreview.textContent = "ASCIIロゴに使えない文字があります";
+    asciiPreview.textContent = copy.asciiInvalid;
   }
-  const issues = validateProject(project);
+  const issues = validateProject(project, locale);
   const status = requireElement("#project-status", HTMLElement);
   if (issues.length > 0) {
     generatedBatch = "";
-    status.textContent = `${issues.length}件の入力を確認してください`;
+    status.textContent = copy.checkInputs(issues.length);
     preview.textContent = issues.map((issue) => `[${issue.path}] ${issue.message}`).join("\n");
     return;
   }
   try {
     generatedBatch = generateBatch(project);
     preview.textContent = generatedBatch;
-    status.textContent = "Tweak BATを生成できます";
+    status.textContent = copy.canGenerate;
     saveProject(project);
   } catch (error) {
     generatedBatch = "";
-    status.textContent = "Tweak BATを生成できません";
-    preview.textContent = error instanceof Error ? error.message : "生成中にエラーが発生しました";
+    status.textContent = copy.cannotGenerate;
+    preview.textContent = copy.generationError;
   }
 }
 
@@ -97,8 +107,26 @@ function resetEditor(): void {
   hideFormErrors();
 }
 
-initializeTweakForm();
+initializeTweakForm(copy);
+applyDocumentLocale(locale, copy);
 render();
+
+languageInput.addEventListener("change", () => {
+  if (!isAppLocale(languageInput.value) || languageInput.value === locale) {
+    languageInput.value = locale;
+    return;
+  }
+  locale = languageInput.value;
+  copy = BUILDER_COPY[locale];
+  const restoreFocus = captureRenderedFocus(themeOptions, tweakList);
+  saveLocale(locale);
+  applyDocumentLocale(locale, copy);
+  setTweakFormLocale(copy);
+  hideFormErrors();
+  render();
+  restoreFocus();
+  showToast(copy.languageChanged);
+});
 
 [titleInput, bannerInput, subtitleInput].forEach((element) => {
   element.addEventListener("input", updateProjectIdentity);
@@ -111,7 +139,7 @@ requireElement("#tweak-form", HTMLFormElement).addEventListener("submit", (event
   const tweak = readTweakForm();
   const exists = project.tweaks.some((candidate) => candidate.id === tweak.id);
   const next = exists ? updateTweak(project, tweak) : addTweak(project, tweak);
-  const issues = validateProject(next);
+  const issues = validateProject(next, locale);
   if (issues.length > 0) {
     showFormErrors(issues.map((issue) => issue.message));
     return;
@@ -119,7 +147,7 @@ requireElement("#tweak-form", HTMLFormElement).addEventListener("submit", (event
   project = next;
   resetEditor();
   render();
-  showToast(exists ? "Gaming Tweakを更新しました" : "Gaming Tweakを追加しました");
+  showToast(exists ? copy.tweakUpdated : copy.tweakAdded);
 });
 
 requireElement("#cancel-edit-button", HTMLButtonElement).addEventListener("click", resetEditor);
@@ -141,7 +169,7 @@ tweakList.addEventListener("click", (event) => {
   project = removeTweak(project, tweakId);
   resetEditor();
   render();
-  showToast("Gaming Tweakを削除しました");
+  showToast(copy.tweakDeleted);
 });
 
 requireElement("#reg-import-button", HTMLButtonElement).addEventListener("click", () => {
@@ -156,31 +184,31 @@ requireElement("#reg-import-input", HTMLInputElement).addEventListener("change",
     return;
   }
   if (files.length > 20) {
-    showToast("一度に取り込めるREGファイルは20個までです");
+    showToast(copy.tooManyRegFiles(20));
     return;
   }
   if (files.reduce((total, file) => total + file.size, 0) > MAX_REG_IMPORT_BYTES) {
-    showToast(`一度に取り込めるREGファイルは合計${MAX_REG_IMPORT_BYTES / 1_048_576}MBまでです`);
+    showToast(copy.regTotalTooLarge(MAX_REG_IMPORT_BYTES / 1_048_576));
     return;
   }
   try {
     const results = await Promise.all(files.map(async (file) =>
-      parseRegFile(new Uint8Array(await file.arrayBuffer()), file.name),
+      parseRegFile(new Uint8Array(await file.arrayBuffer()), file.name, locale),
     ));
     const values = results.flatMap((result) => result.values);
     const warnings = results.flatMap((result) => result.warnings);
-    const next = mergeImportedValues(project, values);
-    const issues = validateProject(next);
+    const next = mergeImportedValues(project, values, locale);
+    const issues = validateProject(next, locale);
     if (issues.length > 0) {
-      throw new Error(issues[0]?.message ?? "REGファイルの内容を追加できません");
+      showToast(issues[0]?.message ?? copy.regCannotAdd);
+      return;
     }
     project = next;
     resetEditor();
     render();
-    const warningText = warnings.length > 0 ? ` / 警告${warnings.length}件` : "";
-    showToast(`${files.length}ファイルから${values.length}件のTweakを取り込みました${warningText}`);
+    showToast(copy.regImported(files.length, values.length, warnings.length));
   } catch (error) {
-    showToast(error instanceof Error ? error.message : "REGファイルを読み込めませんでした");
+    showToast(error instanceof RegImportError ? error.message : copy.regImportFailed);
   }
 });
 
@@ -196,55 +224,69 @@ requireElement("#import-input", HTMLInputElement).addEventListener("change", asy
     return;
   }
   if (file.size > MAX_PROJECT_JSON_BYTES) {
-    showToast(`JSONは${MAX_PROJECT_JSON_BYTES / 1_048_576}MB以下にしてください`);
+    showToast(copy.jsonTooLarge(MAX_PROJECT_JSON_BYTES / 1_048_576));
     return;
   }
-  const result = parseProjectJson(await file.text());
+  const result = parseProjectJson(await file.text(), locale);
   if (!result.ok) {
-    showToast(result.errors[0] ?? "JSONを読み込めませんでした");
+    showToast(result.errors[0] ?? copy.jsonInvalid);
     return;
   }
   project = result.project;
   resetEditor();
   render();
-  showToast("Tweakプロジェクトを読み込みました");
+  showToast(copy.projectLoaded);
 });
 
 requireElement("#export-button", HTMLButtonElement).addEventListener("click", async () => {
-  if (validateProject(project).length > 0) {
-    showToast("入力エラーを直してから保存してください");
+  if (validateProject(project, locale).length > 0) {
+    showToast(copy.fixBeforeSave);
     return;
   }
-  const saved = await downloadText(
-    projectFilename(project, "json"),
-    `${JSON.stringify(project, null, 2)}\n`,
-    "application/json;charset=utf-8",
-  );
-  if (saved) {
-    showToast("Tweakプロジェクトを保存しました");
+  try {
+    const saved = await downloadText(
+      projectFilename(project, "json"),
+      `${JSON.stringify(project, null, 2)}\n`,
+      "application/json;charset=utf-8",
+      locale,
+    );
+    if (saved) {
+      showToast(copy.projectSaved);
+    }
+  } catch {
+    showToast(copy.projectSaveFailed);
   }
 });
 
 requireElement("#download-button", HTMLButtonElement).addEventListener("click", async () => {
   if (generatedBatch.length === 0) {
-    showToast("入力エラーを直してから保存してください");
+    showToast(copy.fixBeforeSave);
     return;
   }
-  const saved = await downloadText(projectFilename(project, "bat"), generatedBatch, "text/plain;charset=utf-8");
-  if (saved) {
-    showToast("Gaming Tweak BATを保存しました");
+  try {
+    const saved = await downloadText(
+      projectFilename(project, "bat"),
+      generatedBatch,
+      "text/plain;charset=utf-8",
+      locale,
+    );
+    if (saved) {
+      showToast(copy.batSaved);
+    }
+  } catch {
+    showToast(copy.batSaveFailed);
   }
 });
 
 requireElement("#copy-button", HTMLButtonElement).addEventListener("click", async () => {
   if (generatedBatch.length === 0) {
-    showToast("コピーできるTweak BATがありません");
+    showToast(copy.noBatToCopy);
     return;
   }
   try {
     await copyText(generatedBatch);
-    showToast("Gaming Tweak BATをコピーしました");
+    showToast(copy.batCopied);
   } catch {
-    showToast("クリップボードへコピーできませんでした");
+    showToast(copy.clipboardFailed);
   }
 });

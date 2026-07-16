@@ -15,12 +15,20 @@ describe("Electron text contracts", () => {
     const content = "x".repeat(16_777_217);
     expect(contracts.MAX_TEXT_CHARS).toBe(32 * 1_048_576);
     expect(contracts.validClipboardContent(content)).toBe(true);
-    expect(contracts.validSaveRequest({ filename: "large.bat", content, type: "text/plain" })).toBe(true);
+    expect(contracts.validSaveRequest({ filename: "large.bat", content, type: "text/plain", locale: "en" })).toBe(true);
   });
 
   it("rejects text beyond the current boundary", () => {
     const content = "x".repeat(contracts.MAX_TEXT_CHARS + 1);
     expect(contracts.validClipboardContent(content)).toBe(false);
-    expect(contracts.validSaveRequest({ filename: "large.bat", content, type: "text/plain" })).toBe(false);
+    expect(contracts.validSaveRequest({ filename: "large.bat", content, type: "text/plain", locale: "ja" })).toBe(false);
+  });
+
+  it("requires a supported builder locale", () => {
+    const request = { filename: "project.json", content: "{}", type: "application/json" };
+    expect(contracts.validSaveRequest({ ...request, locale: "ja" })).toBe(true);
+    expect(contracts.validSaveRequest({ ...request, locale: "en" })).toBe(true);
+    expect(contracts.validSaveRequest({ ...request, locale: "fr" })).toBe(false);
+    expect(contracts.validSaveRequest(request)).toBe(false);
   });
 });

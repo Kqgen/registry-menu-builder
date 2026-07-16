@@ -12,7 +12,7 @@ describe("renderAsciiBanner", () => {
     expect(outputs[1]?.join("\n")).toMatch(/[▀▄█]/u);
     expect(outputs[1]?.join("\n")).toContain("╱╱");
     expect(renderStyledAsciiBanner("GAME TWEAK", "drift").flat().some((segment) => segment.tone === "secondary")).toBe(true);
-    expect(outputs[2]?.join("\n")).toMatch(/[━┃╱╲◆]/u);
+    expect(outputs[2]?.join("\n")).toMatch(/[━┃╱╲+]/u);
     expect(renderStyledAsciiBanner("GAME TWEAK", "ghost").flat().some((segment) => segment.tone === "secondary")).toBe(true);
     expect(outputs[3]?.join("\n")).toContain("▒");
     expect(renderStyledAsciiBanner("GAME TWEAK", "umbra").flat().some((segment) => segment.tone === "secondary")).toBe(true);
@@ -32,5 +32,11 @@ describe("renderAsciiBanner", () => {
 
   it("rejects characters instead of substituting an unknown glyph", () => {
     expect(() => renderAsciiBanner("GAME!", "apex")).toThrow("Unsupported banner character");
+  });
+
+  it("uses single-cell ASCII nodes for the ghost style", () => {
+    const output = renderAsciiBanner("MAX PENDING", "ghost").join("\n");
+    expect(output).toContain("+");
+    expect(output).not.toContain("◆");
   });
 });

@@ -1,6 +1,13 @@
-export async function downloadText(filename: string, content: string, type: string): Promise<boolean> {
+import type { AppLocale } from "../i18n/locale.ts";
+
+export async function downloadText(
+  filename: string,
+  content: string,
+  type: string,
+  locale: AppLocale,
+): Promise<boolean> {
   if (window.tweakForge !== undefined) {
-    return window.tweakForge.saveText({ filename, content, type });
+    return window.tweakForge.saveText({ filename, content, type, locale });
   }
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);

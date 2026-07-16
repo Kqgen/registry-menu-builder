@@ -216,11 +216,11 @@ function renderGhost(canvas: VectorCanvas): StyledBanner {
     if (bitCount(mask) > 1) {
       const corner = diagonal ? undefined : junctionCharacter(canvas, rowIndex, column);
       return corner === undefined
-        ? { tone: "secondary" as const, text: "◆" }
+        ? { tone: "secondary" as const, text: "+" }
         : { tone: "primary" as const, text: corner };
     }
     if (neighborCount(canvas, rowIndex, column) <= 1) {
-      return { tone: "secondary" as const, text: "◆" };
+      return { tone: "secondary" as const, text: "+" };
     }
     return { tone: "primary" as const, text: vectorCharacter(mask) };
   })));

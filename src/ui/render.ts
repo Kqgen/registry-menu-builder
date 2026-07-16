@@ -1,12 +1,7 @@
 import { THEMES, type ConsoleTheme } from "../domain/themes.ts";
 import type { RegistryProject, RegistryTweak, ThemeId } from "../domain/types.ts";
 import type { StyledBanner } from "../generator/ascii.ts";
-
-const RISK_LABELS = {
-  low: "LOW",
-  medium: "MID",
-  high: "HIGH",
-} as const;
+import type { BuilderCopy } from "../i18n/builderCopy.ts";
 
 function actionButton(action: "edit" | "delete", tweakId: string, label: string): HTMLButtonElement {
   const button = document.createElement("button");
@@ -18,7 +13,7 @@ function actionButton(action: "edit" | "delete", tweakId: string, label: string)
   return button;
 }
 
-function tweakCard(tweak: RegistryTweak, index: number): HTMLElement {
+function tweakCard(tweak: RegistryTweak, index: number, copy: BuilderCopy): HTMLElement {
   const card = document.createElement("article");
   card.className = "tweak-card";
   card.dataset["risk"] = tweak.risk;
@@ -35,27 +30,31 @@ function tweakCard(tweak: RegistryTweak, index: number): HTMLElement {
   group.textContent = tweak.group;
   const risk = document.createElement("span");
   risk.className = "risk-pill";
-  risk.textContent = RISK_LABELS[tweak.risk];
+  risk.textContent = copy.cardRisks[tweak.risk];
   meta.append(group, risk);
   const title = document.createElement("strong");
   title.textContent = tweak.label;
   const target = document.createElement("code");
-  target.textContent = `${tweak.hive}\\${tweak.keyPath} → ${tweak.valueName || "(Default)"}`;
+  target.textContent = `${tweak.hive}\\${tweak.keyPath} → ${tweak.valueName || copy.defaultValue}`;
   content.append(meta, title, target);
 
   const actions = document.createElement("div");
   actions.className = "tweak-actions";
   actions.append(
-    actionButton("edit", tweak.id, "編集"),
-    actionButton("delete", tweak.id, "削除"),
+    actionButton("edit", tweak.id, copy.edit),
+    actionButton("delete", tweak.id, copy.delete),
   );
   card.append(indexElement, content, actions);
   return card;
 }
 
-export function renderTweakList(container: HTMLElement, project: RegistryProject): void {
+export function renderTweakList(
+  container: HTMLElement,
+  project: RegistryProject,
+  copy: BuilderCopy,
+): void {
   container.replaceChildren();
-  project.tweaks.forEach((tweak, index) => container.append(tweakCard(tweak, index)));
+  project.tweaks.forEach((tweak, index) => container.append(tweakCard(tweak, index, copy)));
 }
 
 export function renderAsciiPreview(container: HTMLElement, rows: StyledBanner, theme: ConsoleTheme): void {

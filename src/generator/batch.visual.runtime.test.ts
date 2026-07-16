@@ -43,7 +43,7 @@ describe("generated BAT console rendering", { timeout: 30_000 }, () => {
       expect(output).toContain("ファイル拡張子を表示");
       expect(output).toContain("SELECT ACTION >");
       expect(output).toContain("|   [A]  Apply every tweak");
-      expect(output).toMatch(bannerStyle === "ghost" ? /[━┃╱╲◆]/u : /[█▀▄]/u);
+      expect(output).toMatch(bannerStyle === "ghost" ? /[━┃╱╲+]/u : /[█▀▄]/u);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

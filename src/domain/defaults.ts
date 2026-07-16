@@ -1,4 +1,5 @@
 import type { RegistryProject, RegistryTweak } from "./types.ts";
+import type { AppLocale } from "../i18n/locale.ts";
 
 export const DEFAULT_TWEAK: RegistryTweak = {
   id: "show_file_extensions",
@@ -25,6 +26,17 @@ export const DEFAULT_PROJECT: RegistryProject = {
   tweaks: [DEFAULT_TWEAK],
 };
 
+const DEFAULT_TWEAK_TEXT: Readonly<Record<AppLocale, Pick<RegistryTweak, "label" | "description">>> = {
+  ja: {
+    label: "ファイル拡張子を表示",
+    description: "既知のファイル種類でも拡張子を表示します",
+  },
+  en: {
+    label: "Show file extensions",
+    description: "Show extensions even for known file types",
+  },
+};
+
 function createInternalId(prefix: "item" | "project"): string {
   const token = globalThis.crypto.randomUUID().replaceAll("-", "").slice(0, 12);
   return `${prefix}_${token}`;
@@ -34,11 +46,11 @@ export function createTweakId(): string {
   return createInternalId("item");
 }
 
-export function createDefaultProject(): RegistryProject {
+export function createDefaultProject(locale: AppLocale = "ja"): RegistryProject {
   return {
     ...DEFAULT_PROJECT,
     projectId: createInternalId("project"),
-    tweaks: [{ ...DEFAULT_TWEAK, id: createTweakId() }],
+    tweaks: [{ ...DEFAULT_TWEAK, ...DEFAULT_TWEAK_TEXT[locale], id: createTweakId() }],
   };
 }
 
