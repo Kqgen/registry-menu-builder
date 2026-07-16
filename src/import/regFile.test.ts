@@ -43,6 +43,62 @@ describe("parseRegFile", () => {
     expect(result.values.find((value) => value.valueName === "Counter")?.data).toBe("0xffffffffffffffff");
   });
 
+  it("keeps quoted semicolons while accepting trailing comments and explicit REG_BINARY", () => {
+    const text = [
+      "Windows Registry Editor Version 5.00",
+      "[HKEY_LOCAL_MACHINE\\Software\\GameTune ; Profile]",
+      '"Text"="value;still data" ; value note',
+      '"Quoted"="say \\\"hello;world\\\"" ; value note',
+      '"Number"=dword:0000002a ; value note',
+      '"Bytes"=hex(3):01,7f,ff ; value note',
+    ].join("\r\n");
+    const result = parseRegFile(new TextEncoder().encode(text), "comments.reg");
+    expect(result.values).toHaveLength(4);
+    expect(result.values.find((value) => value.valueName === "Text")?.data).toBe("value;still data");
+    expect(result.values.find((value) => value.valueName === "Quoted")?.data).toBe('say "hello;world"');
+    expect(result.values.find((value) => value.valueName === "Number")?.data).toBe("0x0000002a");
+    expect(result.values.find((value) => value.valueName === "Bytes")).toMatchObject({
+      keyPath: "Software\\GameTune ; Profile",
+      valueType: "REG_BINARY",
+      data: "01 7f ff",
+    });
+  });
+
+  it("imports a 53-value commented file into a valid project", () => {
+    const values = Array.from(
+      { length: 53 },
+      (_, index) => `"Value${index.toString().padStart(2, "0")}"="${index}" ; explanation`,
+    );
+    const parsed = parseRegFile(new TextEncoder().encode([
+      "Windows Registry Editor Version 5.00",
+      "[HKEY_LOCAL_MACHINE\\Software\\LargeImport]",
+      ...values,
+    ].join("\n")), "large.reg");
+    const merged = mergeImportedValues(DEFAULT_PROJECT, parsed.values);
+    expect(parsed.values).toHaveLength(53);
+    expect(merged.tweaks).toHaveLength(54);
+    expect(validateProject(merged)).toEqual([]);
+  });
+
+  it("imports 1000 new values alongside the default project", () => {
+    const data = "x".repeat(2000);
+    const values = Array.from(
+      { length: 1000 },
+      (_, index) => `"Value${index.toString().padStart(4, "0")}"="${data}"`,
+    );
+    const bytes = utf16Reg([
+      "Windows Registry Editor Version 5.00",
+      "[HKEY_LOCAL_MACHINE\\Software\\LargeImport]",
+      ...values,
+    ].join("\n"));
+    expect(bytes.length).toBeGreaterThan(2 * 1_048_576);
+    const parsed = parseRegFile(bytes, "thousand.reg");
+    const merged = mergeImportedValues(DEFAULT_PROJECT, parsed.values);
+    expect(parsed.values).toHaveLength(1000);
+    expect(merged.tweaks).toHaveLength(1001);
+    expect(validateProject(merged)).toEqual([]);
+  });
+
   it("rejects whole-key deletion and unsupported value types", () => {
     const header = "Windows Registry Editor Version 5.00\r\n";
     expect(() => parseRegFile(utf16Reg(`${header}[-HKEY_CURRENT_USER\\Software\\Bad]`), "bad.reg")).toThrow("キー全体の削除");

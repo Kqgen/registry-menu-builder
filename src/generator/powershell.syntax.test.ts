@@ -9,7 +9,8 @@ import { buildPowerShellEngine } from "./powershell.ts";
 
 function parseWithWindowsPowerShell(source: string): { readonly status: number | null; readonly output: string } {
   const parser = [
-    "$source=[Console]::In.ReadToEnd()",
+    "$payload=[Console]::In.ReadToEnd()",
+    "$source=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload))",
     "$tokens=$null",
     "$errors=$null",
     "[void][System.Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors)",
@@ -18,7 +19,7 @@ function parseWithWindowsPowerShell(source: string): { readonly status: number |
   const result = spawnSync(
     "powershell.exe",
     ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", parser],
-    { input: source, encoding: "utf8", windowsHide: true },
+    { input: Buffer.from(source, "utf8").toString("base64"), encoding: "utf8", windowsHide: true },
   );
   return {
     status: result.status,

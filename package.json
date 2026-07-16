@@ -1,13 +1,13 @@
 {
   "name": "gaming-tweak-forge",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local Windows app for composing reviewable gaming registry tweak batches with value-level backup and restore",
   "author": "Gaming Tweak Forge contributors",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Kqgen/registry-menu-builder.git"
+    "url": "git+https://github.com/Kqgen/Gaming-Tweak-Forge.git"
   },
   "type": "module",
   "main": "electron/main.cjs",

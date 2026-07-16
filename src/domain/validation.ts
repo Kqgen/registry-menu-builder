@@ -1,6 +1,8 @@
 import {
   BANNER_STYLE_IDS,
   HIVES,
+  MAX_PROJECT_JSON_BYTES,
+  MAX_TWEAKS,
   OPERATIONS,
   RISK_LEVELS,
   THEME_IDS,
@@ -174,8 +176,8 @@ export function validateProject(project: RegistryProject): ValidationIssue[] {
   if (project.tweaks.length === 0) {
     issues.push({ path: "tweaks", message: "Gaming Tweakを1件以上追加してください" });
   }
-  if (project.tweaks.length > 40) {
-    issues.push({ path: "tweaks", message: "Gaming Tweakは40件までです" });
+  if (project.tweaks.length > MAX_TWEAKS) {
+    issues.push({ path: "tweaks", message: `Gaming Tweakは${MAX_TWEAKS}件までです` });
   }
   const ids = new Set<string>();
   const targets = new Set<string>();
@@ -251,8 +253,14 @@ export type ProjectParseResult =
   | { readonly ok: false; readonly errors: readonly string[] };
 
 export function parseProjectJson(json: string): ProjectParseResult {
-  if (json.length > 262_144) {
-    return { ok: false, errors: ["JSONは256KB以下にしてください"] };
+  if (
+    json.length > MAX_PROJECT_JSON_BYTES ||
+    new TextEncoder().encode(json).length > MAX_PROJECT_JSON_BYTES
+  ) {
+    return {
+      ok: false,
+      errors: [`JSONは${MAX_PROJECT_JSON_BYTES / 1_048_576}MB以下にしてください`],
+    };
   }
   let value: unknown;
   try {

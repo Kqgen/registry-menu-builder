@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PROJECT, DEFAULT_TWEAK } from "./defaults.ts";
-import type { RegistryProject, RegistryTweak } from "./types.ts";
+import { MAX_PROJECT_JSON_BYTES, MAX_TWEAKS, type RegistryProject, type RegistryTweak } from "./types.ts";
 import { parseProjectJson, parseRegistryData, validateProject, validateTweak } from "./validation.ts";
 
 function tweak(overrides: Partial<RegistryTweak>): RegistryTweak {
@@ -75,7 +75,7 @@ describe("validateProject", () => {
   });
 
   it("enforces the item limit and safe banner alphabet", () => {
-    const many = Array.from({ length: 41 }, (_, index) =>
+    const many = Array.from({ length: MAX_TWEAKS + 1 }, (_, index) =>
       tweak({ id: `item_${index}`, valueName: `Value${index}` }),
     );
     const project = { ...DEFAULT_PROJECT, bannerText: "日本語", tweaks: many };
@@ -93,6 +93,21 @@ describe("parseProjectJson", () => {
     });
   });
 
+  it("round-trips a full-size project within the JSON import contract", () => {
+    const project: RegistryProject = {
+      ...DEFAULT_PROJECT,
+      tweaks: Array.from({ length: MAX_TWEAKS }, (_, index) => tweak({
+        id: `item_${index.toString().padStart(3, "0")}`,
+        valueName: `Value${index}`,
+        valueType: "REG_SZ",
+        data: "x".repeat(2000),
+      })),
+    };
+    const json = JSON.stringify(project, null, 2);
+    expect(new TextEncoder().encode(json).length).toBeLessThanOrEqual(MAX_PROJECT_JSON_BYTES);
+    expect(parseProjectJson(json)).toEqual({ ok: true, project });
+  });
+
   it("rejects unknown fields without mutating a model", () => {
     const json = JSON.stringify(DEFAULT_PROJECT).replace(
       '"version":1',
@@ -104,9 +119,9 @@ describe("parseProjectJson", () => {
   });
 
   it("rejects oversized JSON before parsing", () => {
-    expect(parseProjectJson(" ".repeat(262_145))).toEqual({
+    expect(parseProjectJson(" ".repeat(MAX_PROJECT_JSON_BYTES + 1))).toEqual({
       ok: false,
-      errors: ["JSONは256KB以下にしてください"],
+      errors: [`JSONは${MAX_PROJECT_JSON_BYTES / 1_048_576}MB以下にしてください`],
     });
   });
 

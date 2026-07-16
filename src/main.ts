@@ -2,11 +2,11 @@ import "./styles.css";
 import { mergeImportedValues } from "./domain/import.ts";
 import { addTweak, removeTweak, updateIdentity, updateTweak } from "./domain/project.ts";
 import { getTheme } from "./domain/themes.ts";
-import type { BannerStyleId, RegistryProject, ThemeId } from "./domain/types.ts";
+import { MAX_PROJECT_JSON_BYTES, type BannerStyleId, type RegistryProject, type ThemeId } from "./domain/types.ts";
 import { parseProjectJson, validateProject } from "./domain/validation.ts";
 import { renderStyledAsciiBanner } from "./generator/ascii.ts";
 import { generateBatch, projectFilename } from "./generator/batch.ts";
-import { parseRegFile } from "./import/regFile.ts";
+import { MAX_REG_IMPORT_BYTES, parseRegFile } from "./import/regFile.ts";
 import { loadProject, saveProject } from "./state/storage.ts";
 import { requireElement } from "./ui/dom.ts";
 import { copyText, downloadText } from "./ui/download.ts";
@@ -159,6 +159,10 @@ requireElement("#reg-import-input", HTMLInputElement).addEventListener("change",
     showToast("一度に取り込めるREGファイルは20個までです");
     return;
   }
+  if (files.reduce((total, file) => total + file.size, 0) > MAX_REG_IMPORT_BYTES) {
+    showToast(`一度に取り込めるREGファイルは合計${MAX_REG_IMPORT_BYTES / 1_048_576}MBまでです`);
+    return;
+  }
   try {
     const results = await Promise.all(files.map(async (file) =>
       parseRegFile(new Uint8Array(await file.arrayBuffer()), file.name),
@@ -191,8 +195,8 @@ requireElement("#import-input", HTMLInputElement).addEventListener("change", asy
   if (file === undefined) {
     return;
   }
-  if (file.size > 262_144) {
-    showToast("JSONは256KB以下にしてください");
+  if (file.size > MAX_PROJECT_JSON_BYTES) {
+    showToast(`JSONは${MAX_PROJECT_JSON_BYTES / 1_048_576}MB以下にしてください`);
     return;
   }
   const result = parseProjectJson(await file.text());

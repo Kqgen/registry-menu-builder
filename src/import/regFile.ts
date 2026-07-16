@@ -19,6 +19,9 @@ export interface RegImportResult {
   readonly warnings: readonly string[];
 }
 
+export const MAX_REG_FILE_BYTES = 32 * 1_048_576;
+export const MAX_REG_IMPORT_BYTES = MAX_REG_FILE_BYTES;
+
 const HIVE_NAMES: Readonly<Record<string, RegistryHive>> = {
   HKEY_CURRENT_USER: "HKCU",
   HKEY_LOCAL_MACHINE: "HKLM",
@@ -86,6 +89,30 @@ function unescapeQuoted(value: string, line: number): string {
   return result;
 }
 
+function stripTrailingComment(value: string): string {
+  let quoted = false;
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (quoted && character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (!quoted && character === ";" && /\s/u.test(value[index - 1] ?? "")) {
+      return value.slice(0, index).trimEnd();
+    }
+  }
+  return value;
+}
+
 function parseBytes(value: string, line: number): readonly number[] {
   const normalized = value.replaceAll(/\s/gu, "");
   if (normalized.length === 0) {
@@ -130,7 +157,7 @@ function parseData(value: string, line: number): ParsedData {
   }
   const kind = (hexMatch[1] ?? "").toLowerCase();
   const bytes = parseBytes(hexMatch[2] ?? "", line);
-  if (kind === "") {
+  if (kind === "" || kind === "3") {
     return { operation: "set", valueType: "REG_BINARY", data: bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(" ") };
   }
   if (kind === "1" || kind === "2") {
@@ -156,8 +183,8 @@ function targetKey(value: ImportedRegistryValue): string {
 }
 
 export function parseRegFile(bytes: Uint8Array, sourceName: string): RegImportResult {
-  if (bytes.length > 2_097_152) {
-    throw new Error(`${sourceName}: 2MBを超える.regファイルは読み込めません`);
+  if (bytes.length > MAX_REG_FILE_BYTES) {
+    throw new Error(`${sourceName}: ${MAX_REG_FILE_BYTES / 1_048_576}MBを超える.regファイルは読み込めません`);
   }
   const lines = logicalLines(decode(bytes));
   const first = lines.findIndex((line) => line.text.trim().length > 0);
@@ -168,10 +195,11 @@ export function parseRegFile(bytes: Uint8Array, sourceName: string): RegImportRe
   const imported = new Map<string, ImportedRegistryValue>();
   const warnings: string[] = [];
   for (const line of lines.slice(first + 1)) {
-    const value = line.text.trim();
-    if (value.length === 0 || value.startsWith(";") || value.startsWith("#")) {
+    const source = line.text.trim();
+    if (source.length === 0 || source.startsWith(";") || source.startsWith("#")) {
       continue;
     }
+    const value = source;
     if (value.startsWith("[-")) {
       throw new Error(`${sourceName}:${line.number}: キー全体の削除は安全に変換できません`);
     }
@@ -194,7 +222,8 @@ export function parseRegFile(bytes: Uint8Array, sourceName: string): RegImportRe
       throw new Error(`${sourceName}:${line.number}: 値の構文が不正です`);
     }
     const valueName = defaultMatch !== null ? "" : unescapeQuoted(namedMatch?.[1] ?? "", line.number);
-    const parsed = parseData((defaultMatch?.[1] ?? namedMatch?.[2] ?? "").trim(), line.number);
+    const data = stripTrailingComment(defaultMatch?.[1] ?? namedMatch?.[2] ?? "").trim();
+    const parsed = parseData(data, line.number);
     const entry = { sourceName, ...section, valueName, ...parsed };
     const key = targetKey(entry);
     if (imported.has(key)) {

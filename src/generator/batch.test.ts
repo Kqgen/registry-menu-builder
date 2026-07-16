@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PROJECT, DEFAULT_TWEAK } from "../domain/defaults.ts";
-import type { RegistryProject, RegistryTweak } from "../domain/types.ts";
+import { MAX_TWEAKS, type RegistryProject, type RegistryTweak } from "../domain/types.ts";
 import { generateBatch, projectFilename } from "./batch.ts";
+import { PAGE_SIZE } from "./batchUiLayout.ts";
+import { consoleDisplayWidth } from "./consoleLayout.ts";
 import { buildBootstrapEncodedCommand, buildElevationEncodedCommand } from "./powershell.ts";
 
 function decodeEngine(batch: string): string {
@@ -38,7 +40,7 @@ function hostileProject(): RegistryProject {
 }
 
 describe("generateBatch", () => {
-  it("builds an original choice-driven ASCII menu", () => {
+  it("builds a bilingual choice-driven framed menu", () => {
     const batch = generateBatch(DEFAULT_PROJECT);
     const bannerPayload = batch
       .split("\r\n")
@@ -49,15 +51,21 @@ describe("generateBatch", () => {
     expect(batch).toContain('if /i "%~1"=="--tweakforge-utf8" goto utf8_ready');
     expect(batch).toContain('set "TF_SELF=%~f0"');
     expect(decodeUtf16(buildBootstrapEncodedCommand())).toContain("& $env:TF_SELF '--tweakforge-utf8'");
-    expect(batch).toMatch(/mode con: cols=\d+ lines=42/u);
-    expect(batch).toContain("choice /c 1ARPQ");
-    expect(batch).toContain("TWEAK PROFILE");
-    expect(batch).toContain("GAMING LOADOUT");
-    expect(batch).toContain("[A] DEPLOY FULL GAMING LOADOUT");
-    expect(batch).toContain("[R] RESTORE SAVED SETTINGS");
-    expect(batch).toContain("CREATE SAFETY CHECKPOINT");
+    expect(batch).toMatch(/mode con: cols=\d+ lines=48/u);
+    expect(batch).toContain("choice /c 12 /n /m \"LANGUAGE / 言語 > \"");
+    expect(batch).toContain("choice /c 1ARPLQ");
+    expect(batch).toContain(":menu_ja_001");
+    expect(batch).toContain(":menu_en_001");
+    expect(batch).toContain("プロファイル");
+    expect(batch).toContain("TWEAK LIST");
+    expect(batch).toContain("[A]  すべてのTweakを適用");
+    expect(batch).toContain("[R]  Restore all saved values");
+    expect(batch).toContain("[L]  表示言語を変更");
+    expect(batch).toContain('-Language "%TF_LANG%"');
+    expect(decodeUtf16(buildElevationEncodedCommand())).toContain("'--lang', $language");
     expect(batch).toContain(":RB_ENGINE_BEGIN");
     expect(batch).not.toContain("set /p");
+    expect(batch.split("\r\n")).not.toContain("pause");
     expect(batch).not.toMatch(/[▓░]/u);
     expect(batch).not.toContain("Created By:");
     expect(batch).not.toContain("Disable Telemetry");
@@ -65,7 +73,10 @@ describe("generateBatch", () => {
     expect(bannerPayload.length).toBeGreaterThan(0);
     expect(bannerPayload.length).toBeLessThan(7000);
     for (const line of batch.split("\r\n").filter((candidate) => candidate.startsWith("echo(+"))) {
-      expect(line.slice(5)).toHaveLength(118);
+      expect(consoleDisplayWidth(line.slice(5))).toBe(118);
+    }
+    for (const line of batch.split("\r\n").filter((candidate) => candidate.startsWith("echo(^|"))) {
+      expect(consoleDisplayWidth(line.slice(5).replaceAll("^", ""))).toBe(118);
     }
   });
 
@@ -103,6 +114,25 @@ describe("generateBatch", () => {
     expect(batch).not.toMatch(/^echo PWN/gmu);
   });
 
+  it("emits unique labels and resolves every static jump target", () => {
+    const tweaks = Array.from({ length: MAX_TWEAKS }, (_, index): RegistryTweak => ({
+      ...DEFAULT_TWEAK,
+      id: `item_${index.toString().padStart(3, "0")}`,
+      valueName: `Value${index}`,
+    }));
+    const executable = generateBatch({ ...DEFAULT_PROJECT, tweaks }).split("\r\n").slice(0, -1);
+    const payloadStart = executable.indexOf(":RB_ENGINE_BEGIN");
+    const lines = executable.slice(0, payloadStart + 1);
+    const labels = lines
+      .filter((line) => /^:[a-z0-9_]+$/iu.test(line))
+      .map((line) => line.slice(1).toLowerCase());
+    const targets = lines.flatMap((line) =>
+      [...line.matchAll(/\b(?:goto\s+:?|call\s+:)([a-z0-9_]+)/giu)].map((match) => (match[1] ?? "").toLowerCase()),
+    ).filter((target) => target !== "eof");
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(targets.filter((target) => !labels.includes(target))).toEqual([]);
+  });
+
   it("uses a fixed PowerShell capability set", () => {
     const engine = decodeEngine(generateBatch(DEFAULT_PROJECT));
     for (const denied of [
@@ -119,9 +149,9 @@ describe("generateBatch", () => {
     expect(engine).toContain("[ValidatePattern('^[a-z][a-z0-9_]{2,47}$')]");
   });
 
-  it("supports forty entries with bounded physical lines and pagination", () => {
+  it("supports the full item limit with bounded physical lines and pagination", () => {
     const data = "x".repeat(2000);
-    const tweaks = Array.from({ length: 40 }, (_, index): RegistryTweak => ({
+    const tweaks = Array.from({ length: MAX_TWEAKS }, (_, index): RegistryTweak => ({
       ...DEFAULT_TWEAK,
       id: `item_${index.toString().padStart(2, "0")}`,
       label: `Entry ${index}`,
@@ -130,8 +160,14 @@ describe("generateBatch", () => {
       data,
     }));
     const batch = generateBatch({ ...DEFAULT_PROJECT, tweaks });
-    expect(batch).toContain(":menu_005");
-    expect(Math.max(...batch.split("\r\n").map((line) => line.length))).toBeLessThan(7901);
+    const lastPage = Math.ceil(MAX_TWEAKS / PAGE_SIZE).toString().padStart(3, "0");
+    expect(batch).toContain(`:menu_${lastPage}`);
+    expect(batch).toContain(`:menu_ja_${lastPage}`);
+    expect(batch).toContain(`:menu_en_${lastPage}`);
+    const longestLine = batch
+      .split("\r\n")
+      .reduce((longest, line) => Math.max(longest, line.length), 0);
+    expect(longestLine).toBeLessThan(7901);
   });
 });
 

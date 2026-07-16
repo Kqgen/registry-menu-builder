@@ -11,6 +11,8 @@ export const VALUE_TYPES = [
 export const RISK_LEVELS = ["low", "medium", "high"] as const;
 export const THEME_IDS = ["amber", "ice", "matrix", "paper"] as const;
 export const BANNER_STYLE_IDS = ["apex", "drift", "ghost", "umbra", "ember"] as const;
+export const MAX_TWEAKS = 1024;
+export const MAX_PROJECT_JSON_BYTES = 16 * 1_048_576;
 
 export type RegistryHive = (typeof HIVES)[number];
 export type RegistryOperation = (typeof OPERATIONS)[number];

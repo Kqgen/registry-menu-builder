@@ -38,9 +38,18 @@ export function truncateConsoleText(value: string, maxWidth: number): string {
   return `${result}${suffix}`;
 }
 
+export function padConsoleText(value: string, width: number): string {
+  const truncated = truncateConsoleText(value, width);
+  return `${truncated}${" ".repeat(Math.max(0, width - consoleDisplayWidth(truncated)))}`;
+}
+
+export function panelLine(value: string, width: number): string {
+  return `| ${padConsoleText(value, Math.max(1, width - 4))} |`;
+}
+
 export function sectionRule(label: string, width: number, fill = "-"): string {
   const prefix = `+-- ${label} `;
-  return `${prefix}${fill.repeat(Math.max(1, width - prefix.length - 1))}+`;
+  return `${prefix}${fill.repeat(Math.max(1, width - consoleDisplayWidth(prefix) - 1))}+`;
 }
 
 export function strongRule(width: number): string {

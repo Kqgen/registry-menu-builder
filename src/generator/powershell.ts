@@ -6,6 +6,7 @@ import type {
   RegistryTweak,
   RegistryValueType,
 } from "../domain/types.ts";
+import { BATCH_COPY } from "./batchLocale.ts";
 import { encodeUtf16LeBase64 } from "./encoding.ts";
 
 const PROVIDER_ROOTS: Readonly<Record<RegistryHive, string>> = {
@@ -72,11 +73,17 @@ export function buildPowerShellEngine(project: RegistryProject): string {
     "[CmdletBinding()]",
     "param(",
     "  [Parameter(Mandatory=$true)][ValidateSet('Apply','Restore','RestorePoint')][string]$Action,",
-    "  [ValidatePattern('^[a-z][a-z0-9_]{2,47}$')][string]$TweakId = ''",
+    "  [ValidatePattern('^[a-z][a-z0-9_]{2,47}$')][string]$TweakId = '',",
+    "  [ValidateSet('ja','en')][string]$Language = 'en'",
     ")",
     "$ErrorActionPreference = 'Stop'",
     "$stateRoot = $env:RB_STATE",
     "$logFile = $env:RB_LOG",
+    "$messages = @{",
+    `  ja = @{ RestorePoint=${psString(BATCH_COPY.ja.messages.engineRestorePointCreated)}; Apply=${psString(BATCH_COPY.ja.messages.engineApplyCompleted)}; Restore=${psString(BATCH_COPY.ja.messages.engineRestoreCompleted)}; Error=${psString(BATCH_COPY.ja.messages.engineError)} }`,
+    `  en = @{ RestorePoint=${psString(BATCH_COPY.en.messages.engineRestorePointCreated)}; Apply=${psString(BATCH_COPY.en.messages.engineApplyCompleted)}; Restore=${psString(BATCH_COPY.en.messages.engineRestoreCompleted)}; Error=${psString(BATCH_COPY.en.messages.engineError)} }`,
+    "}",
+    "$message = $messages[$Language]",
     `$projectId = ${psString(project.projectId)}`,
     "if ([string]::IsNullOrWhiteSpace($stateRoot) -or [string]::IsNullOrWhiteSpace($logFile)) { throw 'Runtime paths are missing.' }",
     "$entries = @(",
@@ -206,11 +213,11 @@ export function buildPowerShellEngine(project: RegistryProject): string {
     "    Write-Result '-' 'RestorePoint' 'START'",
     `    Checkpoint-Computer -Description ${psString(`${project.title} checkpoint`)} -RestorePointType MODIFY_SETTINGS`,
     "    Write-Result '-' 'RestorePoint' 'OK'",
-    "    Write-Host 'Restore point created.' -ForegroundColor Green",
+    "    Write-Host $message.RestorePoint -ForegroundColor Green",
     "    exit 0",
     "  } catch {",
     "    try { Write-Result '-' 'RestorePoint' 'FAIL' } catch {}",
-    "    Write-Host $_.Exception.Message -ForegroundColor Red",
+    "    Write-Host ($message.Error + ': ' + $_.Exception.Message) -ForegroundColor Red",
     "    exit 1",
     "  }",
     "}",
@@ -220,11 +227,12 @@ export function buildPowerShellEngine(project: RegistryProject): string {
     "  Write-Result $selected.Id $Action 'START'",
     "  if ($Action -eq 'Apply') { Apply-Entry $selected } else { Restore-Entry $selected }",
     "  Write-Result $selected.Id $Action 'OK'",
-    "  Write-Host ($Action + ' completed: ' + $selected.Id) -ForegroundColor Green",
+    "  $completed = if ($Action -eq 'Apply') { $message.Apply } else { $message.Restore }",
+    "  Write-Host ($completed + ': ' + $selected.Id) -ForegroundColor Green",
     "  exit 0",
     "} catch {",
     "  try { Write-Result $selected.Id $Action 'FAIL' } catch {}",
-    "  Write-Host $_.Exception.Message -ForegroundColor Red",
+    "  Write-Host ($message.Error + ': ' + $_.Exception.Message) -ForegroundColor Red",
     "  exit 1",
     "}",
     "",
@@ -235,8 +243,10 @@ export function buildElevationEncodedCommand(): string {
   const source = [
     "$ErrorActionPreference = 'Stop'",
     "$self = $env:RB_SELF",
+    "$language = $env:TF_LANG",
     "if ([string]::IsNullOrWhiteSpace($self)) { throw 'Script path is missing.' }",
-    "Start-Process -FilePath $self -Verb RunAs",
+    "if ($language -notin @('ja','en')) { throw 'Display language is invalid.' }",
+    "Start-Process -FilePath $self -ArgumentList @('--tweakforge-utf8', '--lang', $language) -Verb RunAs",
   ].join(";");
   return encodeUtf16LeBase64(source);
 }

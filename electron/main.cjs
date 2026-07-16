@@ -1,19 +1,9 @@
 const { app, BrowserWindow, clipboard, dialog, ipcMain } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { validClipboardContent, validSaveRequest } = require("./text-contracts.cjs");
 
 const smokeTest = process.argv.includes("--smoke-test");
-
-function validSaveRequest(request) {
-  return request !== null &&
-    typeof request === "object" &&
-    typeof request.filename === "string" &&
-    /^[^<>:"/\\|?*\u0000-\u001f]{1,80}$/u.test(request.filename) &&
-    typeof request.content === "string" &&
-    request.content.length <= 16_777_216 &&
-    typeof request.type === "string" &&
-    request.type.length <= 96;
-}
 
 ipcMain.handle("save-text", async (_event, request) => {
   if (!validSaveRequest(request)) {
@@ -35,7 +25,7 @@ ipcMain.handle("save-text", async (_event, request) => {
 });
 
 ipcMain.handle("copy-text", (_event, content) => {
-  if (typeof content !== "string" || content.length > 16_777_216) {
+  if (!validClipboardContent(content)) {
     throw new Error("Invalid clipboard content");
   }
   clipboard.writeText(content);
