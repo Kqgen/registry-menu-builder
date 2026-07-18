@@ -1,17 +1,21 @@
 const SCRIPT = `
   (() => {
     const localeKey = "gaming-tweak-forge.locale.v1";
-    const projectKey = "gaming-tweak-forge.project.v1";
+    const projectKey = "gaming-tweak-forge.project.v2";
     const localeSelect = document.querySelector("#builder-language");
     const draft = document.querySelector("#tweak-label");
     const operation = document.querySelector("#tweak-operation");
     const risk = document.querySelector("#tweak-risk");
     const preview = document.querySelector("#batch-preview");
+    const powerPreset = document.querySelector("#power-plan-preset");
+    const powerRisk = document.querySelector("#power-plan-risk");
     if (!(localeSelect instanceof HTMLSelectElement) ||
         !(draft instanceof HTMLInputElement) ||
         !(operation instanceof HTMLSelectElement) ||
         !(risk instanceof HTMLSelectElement) ||
-        !(preview instanceof HTMLPreElement)) {
+        !(preview instanceof HTMLPreElement) ||
+        !(powerPreset instanceof HTMLSelectElement) ||
+        !(powerRisk instanceof HTMLSelectElement)) {
       return { valid: false, checks: { requiredElements: false } };
     }
     const initialLocale = localeSelect.value;
@@ -21,6 +25,7 @@ const SCRIPT = `
     const originalPreview = preview.textContent;
     const operationValues = [...operation.options].map((entry) => entry.value).join(",");
     const riskValues = [...risk.options].map((entry) => entry.value).join(",");
+    const powerPresetValues = [...powerPreset.options].map((entry) => entry.value).join(",");
     const switchLocale = (value) => {
       localeSelect.value = value;
       localeSelect.dispatchEvent(new Event("change", { bubbles: true }));
@@ -34,6 +39,9 @@ const SCRIPT = `
       saveButton: document.querySelector("#save-tweak-button span:last-child")?.textContent === "Add tweak",
       operation: operation.selectedOptions[0]?.textContent === "Set value",
       risk: risk.selectedOptions[0]?.textContent === "Medium",
+      powerPlan: powerPreset.selectedOptions[0]?.textContent === "High performance",
+      powerPlanButton: document.querySelector("#save-power-plan-button span:last-child")?.textContent === "Add power plan action",
+      powerPlanDraft: document.querySelector("#power-plan-label")?.value === "High performance power plan",
       aria: document.querySelector(".brand")?.getAttribute("aria-label") === "Gaming Tweak Forge home",
       persisted: localStorage.getItem(localeKey) === "en",
       draft: draft.value === "locale-switch-draft",
@@ -48,6 +56,9 @@ const SCRIPT = `
       saveButton: document.querySelector("#save-tweak-button span:last-child")?.textContent === "Tweakを追加",
       operation: operation.selectedOptions[0]?.textContent === "値を設定",
       risk: risk.selectedOptions[0]?.textContent === "中",
+      powerPlan: powerPreset.selectedOptions[0]?.textContent === "高パフォーマンス",
+      powerPlanButton: document.querySelector("#save-power-plan-button span:last-child")?.textContent === "電源プラン操作を追加",
+      powerPlanDraft: document.querySelector("#power-plan-label")?.value === "高パフォーマンス電源プラン",
       aria: document.querySelector(".brand")?.getAttribute("aria-label") === "Gaming Tweak Forge ホーム",
       persisted: localStorage.getItem(localeKey) === "ja",
       draft: draft.value === "locale-switch-draft",
@@ -106,6 +117,7 @@ const SCRIPT = `
     const stableValid =
       [...operation.options].map((entry) => entry.value).join(",") === operationValues &&
       [...risk.options].map((entry) => entry.value).join(",") === riskValues &&
+      [...powerPreset.options].map((entry) => entry.value).join(",") === powerPresetValues &&
       localStorage.getItem(projectKey) === originalProject &&
       preview.textContent === originalPreview;
     draft.value = originalDraft;
@@ -119,6 +131,7 @@ const SCRIPT = `
       documentTitle: document.title === "Gaming Tweak Forge",
       fileProtocol: location.protocol === "file:",
       tweakForm: document.querySelector("#tweak-form") !== null,
+      powerPlanForm: document.querySelector("#power-plan-form") !== null,
       regImport: document.querySelector("#reg-import-button") !== null,
       asciiPreview: document.querySelector("#ascii-art-preview")?.textContent.length > 0,
       saveBridge: typeof window.tweakForge?.saveText === "function",

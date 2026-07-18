@@ -37,5 +37,5 @@ export function buildConsoleBannerCommand(theme: ConsoleTheme): string {
     "Write-Host",
     "}",
   ].join("\r\n");
-  return `powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${encodeUtf16LeBase64(script)}`;
+  return `"%TF_POWERSHELL%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${encodeUtf16LeBase64(script)}`;
 }

@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PROJECT, DEFAULT_TWEAK } from "./defaults.ts";
-import { MAX_PROJECT_JSON_BYTES, MAX_TWEAKS, type RegistryProject, type RegistryTweak } from "./types.ts";
-import { parseProjectJson, parseRegistryData, validateProject, validateTweak } from "./validation.ts";
+import { createEmptyPowerPlanAction, DEFAULT_PROJECT, DEFAULT_TWEAK } from "./defaults.ts";
+import { MAX_PROJECT_JSON_BYTES, MAX_TWEAKS, type PowerPlanAction, type RegistryProject, type RegistryTweak } from "./types.ts";
+import { parseProjectJson, parseRegistryData, validateProject, validateSystemAction, validateTweak } from "./validation.ts";
 
 function tweak(overrides: Partial<RegistryTweak>): RegistryTweak {
   return { ...DEFAULT_TWEAK, ...overrides };
+}
+
+function powerAction(overrides: Partial<PowerPlanAction> = {}): PowerPlanAction {
+  return { ...createEmptyPowerPlanAction("en"), id: "power_plan_action", ...overrides };
 }
 
 describe("parseRegistryData", () => {
@@ -83,6 +87,15 @@ describe("validateProject", () => {
       expect.arrayContaining(["bannerText", "tweaks"]),
     );
   });
+
+  it("accepts a power-plan-only project and rejects unsafe or conflicting actions", () => {
+    expect(validateProject({ ...DEFAULT_PROJECT, tweaks: [], actions: [powerAction()] })).toEqual([]);
+    expect(validateSystemAction(powerAction({ schemeGuid: "-setactive calc.exe" }))).not.toHaveLength(0);
+    const duplicate = powerAction({ id: DEFAULT_TWEAK.id });
+    const second = powerAction({ id: "second_power_action" });
+    const paths = validateProject({ ...DEFAULT_PROJECT, actions: [duplicate, second] }).map((issue) => issue.path);
+    expect(paths).toEqual(expect.arrayContaining(["actions.0.id", "actions"]));
+  });
 });
 
 describe("parseProjectJson", () => {
@@ -91,6 +104,11 @@ describe("parseProjectJson", () => {
       ok: true,
       project: DEFAULT_PROJECT,
     });
+  });
+
+  it("round-trips a typed power plan action", () => {
+    const project = { ...DEFAULT_PROJECT, actions: [powerAction()] };
+    expect(parseProjectJson(JSON.stringify(project))).toEqual({ ok: true, project });
   });
 
   it("round-trips a full-size project within the JSON import contract", () => {
@@ -110,8 +128,8 @@ describe("parseProjectJson", () => {
 
   it("rejects unknown fields without mutating a model", () => {
     const json = JSON.stringify(DEFAULT_PROJECT).replace(
-      '"version":1',
-      '"version":1,"__proto__":{"polluted":true}',
+      '"version":2',
+      '"version":2,"__proto__":{"polluted":true}',
     );
     const result = parseProjectJson(json);
     expect(result.ok).toBe(false);
@@ -127,11 +145,23 @@ describe("parseProjectJson", () => {
 
   it("migrates a schema v1 project without a banner style", () => {
     const legacy = JSON.parse(JSON.stringify(DEFAULT_PROJECT)) as Record<string, unknown>;
+    legacy["version"] = 1;
     delete legacy["bannerStyle"];
+    delete legacy["actions"];
     const result = parseProjectJson(JSON.stringify(legacy));
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.project.bannerStyle).toBe("drift");
+      expect(result.project.version).toBe(2);
+      expect(result.project.actions).toEqual([]);
     }
+  });
+
+  it("rejects unknown action fields and kinds", () => {
+    const unknownField = powerAction() as PowerPlanAction & { extra?: string };
+    unknownField.extra = "no";
+    expect(parseProjectJson(JSON.stringify({ ...DEFAULT_PROJECT, actions: [unknownField] })).ok).toBe(false);
+    const unknownKind = { ...powerAction(), kind: "command" };
+    expect(parseProjectJson(JSON.stringify({ ...DEFAULT_PROJECT, actions: [unknownKind] })).ok).toBe(false);
   });
 });

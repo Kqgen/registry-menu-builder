@@ -3,11 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PROJECT } from "../domain/defaults.ts";
+import { createEmptyPowerPlanAction, DEFAULT_PROJECT } from "../domain/defaults.ts";
 import { BANNER_STYLE_IDS, THEME_IDS } from "../domain/types.ts";
 import { generateBatch } from "./batch.ts";
 
 const MENU_GUARD_ANCHOR = 'set "RB_LOG=%RB_STATE%\\actions.log"';
+const RUNTIME_GUARD_ANCHOR = "if defined TF_TRUSTED_RUNTIME goto trusted_runtime";
 
 describe("generated BAT console rendering", { timeout: 30_000 }, () => {
   it.each(BANNER_STYLE_IDS)("renders %s from a CP932 parent without parser errors", (bannerStyle) => {
@@ -39,10 +40,10 @@ describe("generated BAT console rendering", { timeout: 30_000 }, () => {
       expect(result.status, output).toBe(0);
       expect(output).not.toMatch(/not recognized|認識されていません|�/iu);
       expect(output).toContain("PROFILE");
-      expect(output).toContain("TWEAK LIST");
+      expect(output).toContain("ITEM LIST");
       expect(output).toContain("ファイル拡張子を表示");
       expect(output).toContain("SELECT ACTION >");
-      expect(output).toContain("|   [A]  Apply every tweak");
+      expect(output).toContain("|   [A]  Apply every item");
       expect(output).toMatch(bannerStyle === "ghost" ? /[━┃╱╲+]/u : /[█▀▄]/u);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -130,8 +131,8 @@ describe("generated BAT console rendering", { timeout: 30_000 }, () => {
       const wrapperPath = join(root, "launch.bat");
       const generated = generateBatch(DEFAULT_PROJECT);
       const instrumented = generated.replace(
-        "fltmc >nul 2>&1",
-        'if /i "%TF_VISUAL_TEST%"=="1" goto menu_001\r\nfltmc >nul 2>&1',
+        RUNTIME_GUARD_ANCHOR,
+        `if /i "%TF_VISUAL_TEST%"=="1" goto menu_001\r\n${RUNTIME_GUARD_ANCHOR}`,
       );
       expect(instrumented).not.toBe(generated);
       writeFileSync(batchPath, instrumented, "utf8");
@@ -169,8 +170,8 @@ describe("generated BAT console rendering", { timeout: 30_000 }, () => {
       const wrapperPath = join(root, "launch.bat");
       const generated = generateBatch(DEFAULT_PROJECT);
       const instrumented = generated.replace(
-        "fltmc >nul 2>&1",
-        'if /i "%TF_VISUAL_TEST%"=="1" goto menu_001\r\nfltmc >nul 2>&1',
+        RUNTIME_GUARD_ANCHOR,
+        `if /i "%TF_VISUAL_TEST%"=="1" goto menu_001\r\n${RUNTIME_GUARD_ANCHOR}`,
       );
       expect(instrumented).not.toBe(generated);
       writeFileSync(batchPath, instrumented, "utf8");
@@ -226,10 +227,46 @@ describe("generated BAT console rendering", { timeout: 30_000 }, () => {
       const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
       expect(result.status, output).toBe(0);
       expect(output).not.toMatch(/not recognized|認識されていません|�/iu);
-      expect(output).toContain("対象レジストリ");
+      expect(output).toContain("対象");
       expect(output).toContain("安全情報");
       expect(output).toContain("実行前の確認");
       expect(output).toContain("すべて適用しますか？");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("renders a power plan detail screen without invoking powercfg", () => {
+    const root = mkdtempSync(join(tmpdir(), "tweakforge-power-plan-"));
+    try {
+      const batchPath = join(root, "power plan.bat");
+      const wrapperPath = join(root, "launch.bat");
+      const action = { ...createEmptyPowerPlanAction("en"), id: "power_plan_action" };
+      const generated = generateBatch({ ...DEFAULT_PROJECT, tweaks: [], actions: [action] });
+      const instrumented = generated.replace(
+        MENU_GUARD_ANCHOR,
+        `${MENU_GUARD_ANCHOR}\r\nset "TF_LANG=en"\r\nif /i "%TF_VISUAL_TEST%"=="1" goto menu_001`,
+      );
+      writeFileSync(batchPath, instrumented, "utf8");
+      writeFileSync(wrapperPath, [
+        "@echo off",
+        "chcp 932 >nul",
+        "set \"TF_VISUAL_TEST=1\"",
+        `(echo 1BQ)|call "${batchPath}"`,
+        "exit /b %errorlevel%",
+        "",
+      ].join("\r\n"), "ascii");
+      const result = spawnSync("cmd.exe", ["/d", "/v:off", "/c", wrapperPath], {
+        encoding: "utf8",
+        timeout: 30_000,
+        windowsHide: true,
+      });
+      const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+      expect(result.status, output).toBe(0);
+      expect(output).not.toMatch(/not recognized|認識されていません|�/iu);
+      expect(output).toContain("POWER PLAN");
+      expect(output).toContain("powercfg.exe");
+      expect(output).toContain(action.schemeGuid);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -241,7 +278,7 @@ describe("generated BAT console rendering", { timeout: 30_000 }, () => {
       const batchPath = join(root, "fatal ja.bat");
       const wrapperPath = join(root, "launch.bat");
       const generated = generateBatch(DEFAULT_PROJECT);
-      const instrumented = generated.replace("fltmc >nul 2>&1", "goto engine_failed");
+      const instrumented = generated.replace(RUNTIME_GUARD_ANCHOR, "goto engine_failed");
       expect(instrumented).not.toBe(generated);
       writeFileSync(batchPath, instrumented, "utf8");
       writeFileSync(wrapperPath, [

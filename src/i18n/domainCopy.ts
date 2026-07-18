@@ -29,16 +29,20 @@ export interface ValidationCopy {
   readonly themeInvalid: string;
   readonly bannerTextInvalid: string;
   readonly bannerStyleInvalid: string;
-  readonly tweakRequired: string;
-  readonly tooManyTweaks: (max: number) => string;
+  readonly itemRequired: string;
+  readonly tooManyItems: (max: number) => string;
   readonly duplicateId: string;
   readonly duplicateTarget: string;
+  readonly systemActionKindInvalid: string;
+  readonly powerPlanGuidInvalid: string;
+  readonly duplicatePowerPlanAction: string;
   readonly jsonTooLarge: (megabytes: number) => string;
   readonly jsonSyntaxInvalid: string;
   readonly schemaInvalid: string;
   readonly unsupportedProjectFields: string;
   readonly projectTypeInvalid: string;
   readonly tweakTypeInvalid: string;
+  readonly systemActionTypeInvalid: string;
 }
 
 export const VALIDATION_COPY: Readonly<Record<AppLocale, ValidationCopy>> = {
@@ -71,16 +75,20 @@ export const VALIDATION_COPY: Readonly<Record<AppLocale, ValidationCopy>> = {
     themeInvalid: "コンソールテーマが不正です",
     bannerTextInvalid: "ASCII文字はA–Z、0–9、空白、ハイフンの14文字以内です",
     bannerStyleInvalid: "ASCIIスタイルが不正です",
-    tweakRequired: "Gaming Tweakを1件以上追加してください",
-    tooManyTweaks: (max) => `Gaming Tweakは${max}件までです`,
+    itemRequired: "レジストリTweakまたはWindows操作を1件以上追加してください",
+    tooManyItems: (max) => `登録できる項目は合計${max}件までです`,
     duplicateId: "内部IDが重複しています",
     duplicateTarget: "同じレジストリ値が重複しています",
+    systemActionKindInvalid: "Windows操作の種類が不正です",
+    powerPlanGuidInvalid: "電源プランGUIDは8-4-4-4-12桁の形式で入力してください",
+    duplicatePowerPlanAction: "電源プラン操作は1プロジェクトに1件までです",
     jsonTooLarge: (megabytes) => `JSONは${megabytes}MB以下にしてください`,
     jsonSyntaxInvalid: "JSONの構文が不正です",
-    schemaInvalid: "schema v1のプロジェクトではありません",
+    schemaInvalid: "対応するプロジェクトJSONではありません",
     unsupportedProjectFields: "未対応のプロジェクト項目が含まれています",
     projectTypeInvalid: "プロジェクト情報の型が不正です",
     tweakTypeInvalid: "Gaming Tweakの型が不正です",
+    systemActionTypeInvalid: "Windows操作の型が不正です",
   },
   en: {
     labels: {
@@ -111,16 +119,20 @@ export const VALIDATION_COPY: Readonly<Record<AppLocale, ValidationCopy>> = {
     themeInvalid: "The console theme is invalid",
     bannerTextInvalid: "ASCII text must contain only A–Z, 0–9, spaces, or hyphens and be no longer than 14 characters",
     bannerStyleInvalid: "The ASCII style is invalid",
-    tweakRequired: "Add at least one gaming tweak",
-    tooManyTweaks: (max) => `Gaming tweaks are limited to ${max}`,
+    itemRequired: "Add at least one registry tweak or Windows action",
+    tooManyItems: (max) => `Projects are limited to ${max} total items`,
     duplicateId: "An internal ID is duplicated",
     duplicateTarget: "The same registry value is targeted more than once",
+    systemActionKindInvalid: "The Windows action kind is invalid",
+    powerPlanGuidInvalid: "The power plan GUID must use the 8-4-4-4-12 format",
+    duplicatePowerPlanAction: "A project can contain only one power plan action",
     jsonTooLarge: (megabytes) => `JSON files must be ${megabytes} MB or smaller`,
     jsonSyntaxInvalid: "The JSON syntax is invalid",
-    schemaInvalid: "This is not a schema v1 project",
+    schemaInvalid: "This project JSON version is not supported",
     unsupportedProjectFields: "The project contains unsupported fields",
     projectTypeInvalid: "The project information has invalid types",
     tweakTypeInvalid: "A gaming tweak has invalid types",
+    systemActionTypeInvalid: "A Windows action has invalid types",
   },
 };
 

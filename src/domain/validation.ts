@@ -1,16 +1,18 @@
 import {
   BANNER_STYLE_IDS,
   HIVES,
+  MAX_PROJECT_ITEMS,
   MAX_PROJECT_JSON_BYTES,
-  MAX_TWEAKS,
   OPERATIONS,
   RISK_LEVELS,
+  SYSTEM_ACTION_KINDS,
   THEME_IDS,
   VALUE_TYPES,
   type ParsedRegistryData,
   type RegistryProject,
   type RegistryTweak,
   type RegistryValueType,
+  type SystemAction,
   type ValidationIssue,
 } from "./types.ts";
 import { VALIDATION_COPY, type ValidationCopy } from "../i18n/domainCopy.ts";
@@ -19,6 +21,7 @@ import type { AppLocale } from "../i18n/locale.ts";
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u;
 const SAFE_ID = /^[a-z][a-z0-9_]{2,47}$/u;
 const BANNER_TEXT = /^[A-Za-z0-9 -]+$/u;
+const POWER_PLAN_GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 function parseInteger(data: string, max: bigint, copy: ValidationCopy): bigint {
   const normalized = data.trim();
@@ -162,6 +165,31 @@ export function validateTweak(
   return issues;
 }
 
+export function validateSystemAction(
+  action: SystemAction,
+  path = "action",
+  locale: AppLocale = "ja",
+): ValidationIssue[] {
+  const copy = VALIDATION_COPY[locale];
+  const issues: ValidationIssue[] = [];
+  if (!SAFE_ID.test(action.id)) {
+    issues.push({ path: `${path}.id`, message: copy.internalIdInvalid });
+  }
+  pushTextIssue(issues, `${path}.label`, action.label, copy.labels.displayName, 60, copy);
+  pushTextIssue(issues, `${path}.group`, action.group, copy.labels.group, 40, copy);
+  pushTextIssue(issues, `${path}.description`, action.description, copy.labels.description, 120, copy);
+  if (!SYSTEM_ACTION_KINDS.includes(action.kind)) {
+    issues.push({ path: `${path}.kind`, message: copy.systemActionKindInvalid });
+  }
+  if (!RISK_LEVELS.includes(action.risk)) {
+    issues.push({ path: `${path}.risk`, message: copy.riskInvalid });
+  }
+  if (!POWER_PLAN_GUID.test(action.schemeGuid)) {
+    issues.push({ path: `${path}.schemeGuid`, message: copy.powerPlanGuidInvalid });
+  }
+  return issues;
+}
+
 export function validateProject(project: RegistryProject, locale: AppLocale = "ja"): ValidationIssue[] {
   const copy = VALIDATION_COPY[locale];
   const issues: ValidationIssue[] = [];
@@ -182,11 +210,12 @@ export function validateProject(project: RegistryProject, locale: AppLocale = "j
   if (!BANNER_STYLE_IDS.includes(project.bannerStyle)) {
     issues.push({ path: "bannerStyle", message: copy.bannerStyleInvalid });
   }
-  if (project.tweaks.length === 0) {
-    issues.push({ path: "tweaks", message: copy.tweakRequired });
+  const itemCount = project.tweaks.length + project.actions.length;
+  if (itemCount === 0) {
+    issues.push({ path: "tweaks", message: copy.itemRequired });
   }
-  if (project.tweaks.length > MAX_TWEAKS) {
-    issues.push({ path: "tweaks", message: copy.tooManyTweaks(MAX_TWEAKS) });
+  if (itemCount > MAX_PROJECT_ITEMS) {
+    issues.push({ path: "tweaks", message: copy.tooManyItems(MAX_PROJECT_ITEMS) });
   }
   const ids = new Set<string>();
   const targets = new Set<string>();
@@ -201,6 +230,16 @@ export function validateProject(project: RegistryProject, locale: AppLocale = "j
       issues.push({ path: `tweaks.${index}`, message: copy.duplicateTarget });
     }
     targets.add(target);
+  }
+  for (const [index, action] of project.actions.entries()) {
+    issues.push(...validateSystemAction(action, `actions.${index}`, locale));
+    if (ids.has(action.id)) {
+      issues.push({ path: `actions.${index}.id`, message: copy.duplicateId });
+    }
+    ids.add(action.id);
+  }
+  if (project.actions.filter((action) => action.kind === "power-plan").length > 1) {
+    issues.push({ path: "actions", message: copy.duplicatePowerPlanAction });
   }
   return issues;
 }
@@ -257,6 +296,33 @@ function parseTweak(value: unknown): RegistryTweak | undefined {
   };
 }
 
+function parseSystemAction(value: unknown): SystemAction | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const exactKeys = ["kind", "id", "label", "group", "description", "schemeGuid", "risk"];
+  if (!hasExactKeys(value, exactKeys) || value["kind"] !== "power-plan") {
+    return undefined;
+  }
+  for (const key of ["id", "label", "group", "description", "schemeGuid"] as const) {
+    if (typeof value[key] !== "string") {
+      return undefined;
+    }
+  }
+  if (!isEnumValue(RISK_LEVELS, value["risk"])) {
+    return undefined;
+  }
+  return {
+    kind: "power-plan",
+    id: value["id"] as string,
+    label: value["label"] as string,
+    group: value["group"] as string,
+    description: value["description"] as string,
+    schemeGuid: value["schemeGuid"] as string,
+    risk: value["risk"],
+  };
+}
+
 export type ProjectParseResult =
   | { readonly ok: true; readonly project: RegistryProject }
   | { readonly ok: false; readonly errors: readonly string[] };
@@ -278,12 +344,18 @@ export function parseProjectJson(json: string, locale: AppLocale = "ja"): Projec
   } catch {
     return { ok: false, errors: [copy.jsonSyntaxInvalid] };
   }
-  if (!isRecord(value) || value["version"] !== 1 || !Array.isArray(value["tweaks"])) {
+  if (!isRecord(value) || !Array.isArray(value["tweaks"])) {
     return { ok: false, errors: [copy.schemaInvalid] };
   }
   const legacyKeys = ["version", "projectId", "title", "bannerText", "subtitle", "theme", "tweaks"];
-  const currentKeys = [...legacyKeys, "bannerStyle"];
-  if (!hasExactKeys(value, legacyKeys) && !hasExactKeys(value, currentKeys)) {
+  const versionOneKeys = [...legacyKeys, "bannerStyle"];
+  const versionTwoKeys = [...versionOneKeys, "actions"];
+  const isVersionOne = value["version"] === 1
+    && (hasExactKeys(value, legacyKeys) || hasExactKeys(value, versionOneKeys));
+  const isVersionTwo = value["version"] === 2
+    && hasExactKeys(value, versionTwoKeys)
+    && Array.isArray(value["actions"]);
+  if (!isVersionOne && !isVersionTwo) {
     return { ok: false, errors: [copy.unsupportedProjectFields] };
   }
   if (
@@ -300,8 +372,12 @@ export function parseProjectJson(json: string, locale: AppLocale = "ja"): Projec
   if (tweaks.some((tweak) => tweak === undefined)) {
     return { ok: false, errors: [copy.tweakTypeInvalid] };
   }
+  const actions = isVersionTwo ? (value["actions"] as unknown[]).map(parseSystemAction) : [];
+  if (actions.some((action) => action === undefined)) {
+    return { ok: false, errors: [copy.systemActionTypeInvalid] };
+  }
   const project: RegistryProject = {
-    version: 1,
+    version: 2,
     projectId: value["projectId"],
     title: value["title"],
     bannerText: value["bannerText"],
@@ -309,6 +385,7 @@ export function parseProjectJson(json: string, locale: AppLocale = "ja"): Projec
     subtitle: value["subtitle"],
     theme: value["theme"],
     tweaks: tweaks as RegistryTweak[],
+    actions: actions as SystemAction[],
   };
   const issues = validateProject(project, locale);
   if (issues.length > 0) {

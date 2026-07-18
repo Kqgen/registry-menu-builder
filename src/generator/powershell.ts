@@ -8,6 +8,7 @@ import type {
 } from "../domain/types.ts";
 import { BATCH_COPY } from "./batchLocale.ts";
 import { encodeUtf16LeBase64 } from "./encoding.ts";
+import { buildPowerPlanEntryLiteral, POWER_PLAN_ENGINE_LINES } from "./powerPlanEngine.ts";
 
 const PROVIDER_ROOTS: Readonly<Record<RegistryHive, string>> = {
   HKCU: "HKEY_CURRENT_USER",
@@ -56,6 +57,7 @@ function tweakLiteral(tweak: RegistryTweak): string {
     : { kind: "string", value: "" };
   const properties = [
     `Id=${psString(tweak.id)}`,
+    `ActionKind=${psString("registry")}`,
     `Hive=${psString(tweak.hive)}`,
     `KeyPath=${psString(tweak.keyPath)}`,
     `ValueName=${psString(tweak.valueName)}`,
@@ -68,7 +70,10 @@ function tweakLiteral(tweak: RegistryTweak): string {
 }
 
 export function buildPowerShellEngine(project: RegistryProject): string {
-  const entries = project.tweaks.map(tweakLiteral).join(",\n");
+  const entries = [
+    ...project.tweaks.map(tweakLiteral),
+    ...project.actions.map(buildPowerPlanEntryLiteral),
+  ].join(",\n");
   return [
     "[CmdletBinding()]",
     "param(",
@@ -208,6 +213,7 @@ export function buildPowerShellEngine(project: RegistryProject): string {
     "    $mutex.Dispose()",
     "  }",
     "}",
+    ...POWER_PLAN_ENGINE_LINES,
     "if ($Action -eq 'RestorePoint') {",
     "  try {",
     "    Write-Result '-' 'RestorePoint' 'START'",
@@ -225,7 +231,11 @@ export function buildPowerShellEngine(project: RegistryProject): string {
     "$selected = $entryMap[$TweakId]",
     "try {",
     "  Write-Result $selected.Id $Action 'START'",
-    "  if ($Action -eq 'Apply') { Apply-Entry $selected } else { Restore-Entry $selected }",
+    "  if ($selected.ActionKind -eq 'registry') {",
+    "    if ($Action -eq 'Apply') { Apply-Entry $selected } else { Restore-Entry $selected }",
+    "  } elseif ($selected.ActionKind -eq 'power-plan') {",
+    "    if ($Action -eq 'Apply') { Apply-PowerPlan $selected } else { Restore-PowerPlan $selected }",
+    "  } else { throw 'Unsupported action kind.' }",
     "  Write-Result $selected.Id $Action 'OK'",
     "  $completed = if ($Action -eq 'Apply') { $message.Apply } else { $message.Restore }",
     "  Write-Host ($completed + ': ' + $selected.Id) -ForegroundColor Green",
@@ -237,18 +247,6 @@ export function buildPowerShellEngine(project: RegistryProject): string {
     "}",
     "",
   ].join("\r\n");
-}
-
-export function buildElevationEncodedCommand(): string {
-  const source = [
-    "$ErrorActionPreference = 'Stop'",
-    "$self = $env:RB_SELF",
-    "$language = $env:TF_LANG",
-    "if ([string]::IsNullOrWhiteSpace($self)) { throw 'Script path is missing.' }",
-    "if ($language -notin @('ja','en')) { throw 'Display language is invalid.' }",
-    "Start-Process -FilePath $self -ArgumentList @('--tweakforge-utf8', '--lang', $language) -Verb RunAs",
-  ].join(";");
-  return encodeUtf16LeBase64(source);
 }
 
 export function buildBootstrapEncodedCommand(): string {

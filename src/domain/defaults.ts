@@ -1,4 +1,4 @@
-import type { RegistryProject, RegistryTweak } from "./types.ts";
+import type { PowerPlanAction, RegistryProject, RegistryTweak } from "./types.ts";
 import type { AppLocale } from "../i18n/locale.ts";
 
 export const DEFAULT_TWEAK: RegistryTweak = {
@@ -16,7 +16,7 @@ export const DEFAULT_TWEAK: RegistryTweak = {
 };
 
 export const DEFAULT_PROJECT: RegistryProject = {
-  version: 1,
+  version: 2,
   projectId: "project_demo",
   title: "My Gaming Tweaks",
   bannerText: "GAME TWEAK",
@@ -24,6 +24,7 @@ export const DEFAULT_PROJECT: RegistryProject = {
   subtitle: "Tune locally. Back up first. Restore when state is available.",
   theme: "amber",
   tweaks: [DEFAULT_TWEAK],
+  actions: [],
 };
 
 const DEFAULT_TWEAK_TEXT: Readonly<Record<AppLocale, Pick<RegistryTweak, "label" | "description">>> = {
@@ -66,6 +67,20 @@ export function createEmptyTweak(): RegistryTweak {
     operation: "set",
     valueType: "REG_DWORD",
     data: "0",
+    risk: "medium",
+  };
+}
+
+export function createEmptyPowerPlanAction(locale: AppLocale = "ja"): PowerPlanAction {
+  return {
+    kind: "power-plan",
+    id: createTweakId(),
+    label: locale === "ja" ? "高パフォーマンス電源プラン" : "High performance power plan",
+    group: locale === "ja" ? "電源" : "Power",
+    description: locale === "ja"
+      ? "既存の高パフォーマンス電源プランへ切り替えます"
+      : "Switch to the existing High performance power plan",
+    schemeGuid: "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c",
     risk: "medium",
   };
 }

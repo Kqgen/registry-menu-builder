@@ -1,6 +1,14 @@
 import "./styles.css";
 import { mergeImportedValues } from "./domain/import.ts";
-import { addTweak, removeTweak, updateIdentity, updateTweak } from "./domain/project.ts";
+import {
+  addSystemAction,
+  addTweak,
+  removeSystemAction,
+  removeTweak,
+  updateIdentity,
+  updateSystemAction,
+  updateTweak,
+} from "./domain/project.ts";
 import { getTheme } from "./domain/themes.ts";
 import { MAX_PROJECT_JSON_BYTES, type BannerStyleId, type RegistryProject, type ThemeId } from "./domain/types.ts";
 import { parseProjectJson, validateProject } from "./domain/validation.ts";
@@ -24,7 +32,17 @@ import {
 } from "./ui/form.ts";
 import { captureRenderedFocus } from "./ui/focus.ts";
 import { applyDocumentLocale } from "./ui/localize.ts";
+import {
+  clearPowerPlanForm,
+  fillPowerPlanForm,
+  hidePowerPlanErrors,
+  initializePowerPlanForm,
+  readPowerPlanForm,
+  setPowerPlanFormLocale,
+  showPowerPlanErrors,
+} from "./ui/powerPlanForm.ts";
 import { renderAsciiPreview, renderThemeOptions, renderTweakList } from "./ui/render.ts";
+import { renderSystemActionList } from "./ui/systemActionRender.ts";
 
 let locale = loadLocale();
 let copy = BUILDER_COPY[locale];
@@ -41,6 +59,7 @@ const asciiPreview = requireElement("#ascii-art-preview", HTMLPreElement);
 const preview = requireElement("#batch-preview", HTMLPreElement);
 const themeOptions = requireElement("#theme-options", HTMLDivElement);
 const tweakList = requireElement("#tweak-list", HTMLDivElement);
+const systemActionList = requireElement("#system-action-list", HTMLDivElement);
 const languageInput = requireElement("#builder-language", HTMLSelectElement);
 
 function showToast(message: string): void {
@@ -62,8 +81,10 @@ function render(): void {
   renderThemeOptions(themeOptions, project.theme);
   preview.style.setProperty("--preview-accent", theme.swatch);
   renderTweakList(tweakList, project, copy);
+  renderSystemActionList(systemActionList, project.actions, copy);
   requireElement("#tweak-count", HTMLSpanElement).textContent = String(project.tweaks.length).padStart(2, "0");
-  requireElement("#project-summary", HTMLSpanElement).textContent = copy.summary(project.tweaks.length);
+  requireElement("#system-action-count", HTMLSpanElement).textContent = String(project.actions.length).padStart(2, "0");
+  requireElement("#project-summary", HTMLSpanElement).textContent = copy.summary(project.tweaks.length, project.actions.length);
   requireElement("#preview-heading", HTMLElement).textContent = projectFilename(project, "bat");
   try {
     renderAsciiPreview(asciiPreview, renderStyledAsciiBanner(project.bannerText, project.bannerStyle), theme);
@@ -107,7 +128,13 @@ function resetEditor(): void {
   hideFormErrors();
 }
 
+function resetPowerPlanEditor(): void {
+  clearPowerPlanForm();
+  hidePowerPlanErrors();
+}
+
 initializeTweakForm(copy);
+initializePowerPlanForm(copy, locale);
 applyDocumentLocale(locale, copy);
 render();
 
@@ -118,10 +145,11 @@ languageInput.addEventListener("change", () => {
   }
   locale = languageInput.value;
   copy = BUILDER_COPY[locale];
-  const restoreFocus = captureRenderedFocus(themeOptions, tweakList);
+  const restoreFocus = captureRenderedFocus(themeOptions, tweakList, systemActionList);
   saveLocale(locale);
   applyDocumentLocale(locale, copy);
   setTweakFormLocale(copy);
+  setPowerPlanFormLocale(copy, locale);
   hideFormErrors();
   render();
   restoreFocus();
@@ -152,6 +180,24 @@ requireElement("#tweak-form", HTMLFormElement).addEventListener("submit", (event
 
 requireElement("#cancel-edit-button", HTMLButtonElement).addEventListener("click", resetEditor);
 
+requireElement("#power-plan-form", HTMLFormElement).addEventListener("submit", (event) => {
+  event.preventDefault();
+  const action = readPowerPlanForm();
+  const exists = project.actions.some((candidate) => candidate.id === action.id);
+  const next = exists ? updateSystemAction(project, action) : addSystemAction(project, action);
+  const issues = validateProject(next, locale);
+  if (issues.length > 0) {
+    showPowerPlanErrors(issues.map((issue) => issue.message));
+    return;
+  }
+  project = next;
+  resetPowerPlanEditor();
+  render();
+  showToast(exists ? copy.powerPlanUpdated : copy.powerPlanAdded);
+});
+
+requireElement("#cancel-power-plan-button", HTMLButtonElement).addEventListener("click", resetPowerPlanEditor);
+
 tweakList.addEventListener("click", (event) => {
   const button = (event.target as Element).closest<HTMLButtonElement>("button[data-action]");
   const tweakId = button?.dataset["tweakId"];
@@ -170,6 +216,26 @@ tweakList.addEventListener("click", (event) => {
   resetEditor();
   render();
   showToast(copy.tweakDeleted);
+});
+
+systemActionList.addEventListener("click", (event) => {
+  const button = (event.target as Element).closest<HTMLButtonElement>("button[data-action]");
+  const actionId = button?.dataset["systemActionId"];
+  if (button === null || button === undefined || actionId === undefined) {
+    return;
+  }
+  const action = project.actions.find((candidate) => candidate.id === actionId);
+  if (action === undefined) {
+    return;
+  }
+  if (button.dataset["action"] === "edit") {
+    fillPowerPlanForm(action);
+    return;
+  }
+  project = removeSystemAction(project, actionId);
+  resetPowerPlanEditor();
+  render();
+  showToast(copy.powerPlanDeleted);
 });
 
 requireElement("#reg-import-button", HTMLButtonElement).addEventListener("click", () => {
@@ -234,6 +300,7 @@ requireElement("#import-input", HTMLInputElement).addEventListener("change", asy
   }
   project = result.project;
   resetEditor();
+  resetPowerPlanEditor();
   render();
   showToast(copy.projectLoaded);
 });

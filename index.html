@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="./icon.png" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:*; object-src 'none'; frame-src 'none'; base-uri 'self'" />
-    <meta name="description" content="ゲーム向けレジストリTweakをASCIIメニュー付きWindowsバッチへまとめるローカルアプリ" data-i18n-content="metaDescription" />
+    <meta name="description" content="レジストリTweakと復元可能なWindows操作をASCIIメニュー付きバッチへまとめるローカルアプリ" data-i18n-content="metaDescription" />
     <title>Gaming Tweak Forge</title>
   </head>
   <body>
@@ -36,7 +36,7 @@
         <div>
           <p class="eyebrow" data-i18n="introEyebrow">ローカル・ゲーミングTweakワークベンチ</p>
           <h1><span data-i18n="introTitleFirst">Tweakを入れる。</span><br /><span data-i18n="introTitleSecond">自分のツールになる。</span></h1>
-          <p class="lede" data-i18n="introDescription">レジストリ値を手入力するか、複数設定を含むREGファイルをまとめて取り込みます。生成BATは適用前の値を退避し、状態ファイルが残っている値をTweak単位または一括で復元できます。</p>
+          <p class="lede" data-i18n="introDescription">レジストリ値の手入力・REG取込に加え、Windows標準の電源プラン切替を追加できます。生成BATは初回状態を保存し、項目単位または一括で復元します。</p>
         </div>
         <div class="status-card">
           <span class="status-dot" aria-hidden="true"></span>
@@ -164,6 +164,60 @@
             </div>
             <div id="tweak-list" class="tweak-list"></div>
           </section>
+
+          <section class="panel section-panel" aria-labelledby="windows-action-heading">
+            <div class="section-heading">
+              <div>
+                <p class="step" data-i18n="windowsStep">04 / WINDOWS操作</p>
+                <h2 id="windows-action-heading" data-i18n="windowsHeading">Windows標準ツールを追加</h2>
+              </div>
+              <div class="section-heading-actions">
+                <span class="section-note" data-i18n="windowsNote">powercfg.exe / 既存プランのみ</span>
+                <button id="cancel-power-plan-button" class="text-button" type="button" hidden data-i18n="cancelWindowsEdit">編集を取消</button>
+              </div>
+            </div>
+            <form id="power-plan-form" novalidate>
+              <input id="power-plan-id" type="hidden" />
+              <div class="field-grid">
+                <label class="field">
+                  <span data-i18n="powerPlanName">操作名</span>
+                  <input id="power-plan-label" type="text" maxlength="60" required autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span data-i18n="powerPlanGroup">グループ</span>
+                  <input id="power-plan-group" type="text" maxlength="40" required autocomplete="off" />
+                </label>
+                <label class="field wide">
+                  <span data-i18n="powerPlanEffect">効果・目的</span>
+                  <input id="power-plan-description" type="text" maxlength="120" required autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span data-i18n="powerPlanTarget">切替先の電源プラン</span>
+                  <select id="power-plan-preset"></select>
+                  <small data-i18n="powerPlanTargetHint">選択したGUIDのプランがWindowsに存在する場合だけ切り替わります</small>
+                </label>
+                <label id="power-plan-custom-field" class="field" hidden>
+                  <span data-i18n="customPowerPlanGuid">カスタムGUID</span>
+                  <input id="power-plan-guid" type="text" maxlength="36" autocomplete="off" spellcheck="false" />
+                  <small data-i18n="powerPlanGuidHint">powercfg /list に表示されるGUIDを入力</small>
+                </label>
+                <label class="field compact">
+                  <span data-i18n="risk">注意度</span>
+                  <select id="power-plan-risk"></select>
+                </label>
+              </div>
+              <div id="power-plan-errors" class="form-errors" role="alert" hidden></div>
+              <button id="save-power-plan-button" class="button add-button" type="submit">
+                <span aria-hidden="true">＋</span>
+                <span data-i18n="addPowerPlan">電源プラン操作を追加</span>
+              </button>
+            </form>
+            <div class="subsection-heading">
+              <h3 data-i18n="windowsListHeading">Windows操作一覧</h3>
+              <span id="system-action-count" class="count-badge">0</span>
+            </div>
+            <div id="system-action-list" class="tweak-list"></div>
+          </section>
         </div>
 
         <aside class="preview-column" aria-labelledby="preview-heading">
@@ -180,7 +234,7 @@
           </section>
           <div class="safety-note">
             <span aria-hidden="true">◆</span>
-            <p><strong data-i18n="safetyTitle">適用直前の値を初回だけ保存。</strong><span data-i18n="safetyPrefix">バックアップはBATと同じ場所の </span><code>.tweakforge-state</code><span data-i18n="safetySuffix"> に保持され、利用可能なTweakだけを元へ戻します。</span></p>
+            <p><strong data-i18n="safetyTitle">初回状態を保存してから適用。</strong><span data-i18n="safetyPrefix">バックアップは管理者だけが変更できる </span><code>%ProgramData%\GamingTweakForge\State</code><span data-i18n="safetySuffix"> に保持され、利用可能な項目だけを元へ戻します。</span></p>
           </div>
         </aside>
       </div>

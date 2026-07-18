@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PROJECT, DEFAULT_TWEAK } from "./defaults.ts";
-import { addTweak, removeTweak, updateIdentity, updateTweak } from "./project.ts";
+import { createEmptyPowerPlanAction, DEFAULT_PROJECT, DEFAULT_TWEAK } from "./defaults.ts";
+import { addSystemAction, addTweak, removeSystemAction, removeTweak, updateIdentity, updateSystemAction, updateTweak } from "./project.ts";
 
 describe("project operations", () => {
   it("adds, edits and removes tweaks immutably", () => {
@@ -27,5 +27,18 @@ describe("project operations", () => {
     expect(result.tweaks).toBe(DEFAULT_PROJECT.tweaks);
     expect(result.theme).toBe("ice");
     expect(result.bannerStyle).toBe("ghost");
+  });
+
+  it("adds, edits and removes Windows actions immutably", () => {
+    const added = { ...createEmptyPowerPlanAction("en"), id: "power_action" };
+    const afterAdd = addSystemAction(DEFAULT_PROJECT, added);
+    const edited = { ...added, label: "Edited power plan" };
+    const afterEdit = updateSystemAction(afterAdd, edited);
+    const afterRemove = removeSystemAction(afterEdit, edited.id);
+
+    expect(DEFAULT_PROJECT.actions).toEqual([]);
+    expect(afterAdd.actions).toEqual([added]);
+    expect(afterEdit.actions).toEqual([edited]);
+    expect(afterRemove.actions).toEqual([]);
   });
 });

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PROJECT, DEFAULT_TWEAK } from "../domain/defaults.ts";
+import { createEmptyPowerPlanAction, DEFAULT_PROJECT, DEFAULT_TWEAK } from "../domain/defaults.ts";
 import { MAX_TWEAKS, type RegistryProject, type RegistryTweak } from "../domain/types.ts";
 import { generateBatch, projectFilename } from "./batch.ts";
 import { PAGE_SIZE } from "./batchUiLayout.ts";
 import { consoleDisplayWidth } from "./consoleLayout.ts";
-import { buildBootstrapEncodedCommand, buildElevationEncodedCommand } from "./powershell.ts";
+import { buildElevatedBootstrapSource, buildElevationEncodedCommand } from "./elevatedBootstrap.ts";
+import { buildBootstrapEncodedCommand } from "./powershell.ts";
+import { buildTrustedRuntimeSource } from "./trustedRuntime.ts";
 
 function decodeEngine(batch: string): string {
   const lines = batch.split("\r\n");
@@ -13,6 +15,24 @@ function decodeEngine(batch: string): string {
   const payload = lines.slice(start + 1, end).map((line) => line.slice(1)).join("");
   const bytes = Uint8Array.from(atob(payload), (character) => character.charCodeAt(0));
   return new TextDecoder().decode(bytes.slice(3));
+}
+
+function decodeTrustedRuntime(batch: string): string {
+  const lines = batch.split("\r\n");
+  const start = lines.indexOf(":RB_TRUSTED_BEGIN");
+  const end = lines.indexOf(":RB_TRUSTED_END");
+  const payload = lines.slice(start + 1, end).map((line) => line.slice(1)).join("");
+  const bytes = Uint8Array.from(atob(payload), (character) => character.charCodeAt(0));
+  return new TextDecoder("utf-16le").decode(bytes);
+}
+
+function decodeElevatedBootstrap(batch: string): string {
+  const lines = batch.split("\r\n");
+  const start = lines.indexOf(":RB_ELEVATED_BEGIN");
+  const end = lines.indexOf(":RB_ELEVATED_END");
+  const payload = lines.slice(start + 1, end).map((line) => line.slice(1)).join("");
+  const bytes = Uint8Array.from(atob(payload), (character) => character.charCodeAt(0));
+  return new TextDecoder("utf-16le").decode(bytes);
 }
 
 function decodeUtf16(value: string): string {
@@ -51,18 +71,23 @@ describe("generateBatch", () => {
     expect(batch).toContain('if /i "%~1"=="--tweakforge-utf8" goto utf8_ready');
     expect(batch).toContain('set "TF_SELF=%~f0"');
     expect(decodeUtf16(buildBootstrapEncodedCommand())).toContain("& $env:TF_SELF '--tweakforge-utf8'");
-    expect(batch).toMatch(/mode con: cols=\d+ lines=48/u);
-    expect(batch).toContain("choice /c 12 /n /m \"LANGUAGE / 言語 > \"");
-    expect(batch).toContain("choice /c 1ARPLQ");
+    expect(batch).toMatch(/"%TF_MODE%" con: cols=\d+ lines=48/u);
+    expect(batch).toContain("\"%TF_CHOICE%\" /c 12 /n /m \"LANGUAGE / 言語 > \"");
+    expect(batch).toContain("\"%TF_CHOICE%\" /c 1ARPLQ");
     expect(batch).toContain(":menu_ja_001");
     expect(batch).toContain(":menu_en_001");
     expect(batch).toContain("プロファイル");
-    expect(batch).toContain("TWEAK LIST");
-    expect(batch).toContain("[A]  すべてのTweakを適用");
-    expect(batch).toContain("[R]  Restore all saved values");
+    expect(batch).toContain("ITEM LIST");
+    expect(batch).toContain("[A]  すべての項目を適用");
+    expect(batch).toContain("[R]  Restore all saved state");
     expect(batch).toContain("[L]  表示言語を変更");
     expect(batch).toContain('-Language "%TF_LANG%"');
-    expect(decodeUtf16(buildElevationEncodedCommand())).toContain("'--lang', $language");
+    expect(buildTrustedRuntimeSource(DEFAULT_PROJECT.projectId)).toContain("--lang {1} --trusted-runtime");
+    expect(batch).toContain('set "TF_POWERSHELL=%TF_SYSTEM32%\\WindowsPowerShell\\v1.0\\powershell.exe"');
+    expect(batch).toContain('set "TF_SYSTEM32=%SystemRoot%\\System32"');
+    expect(batch).not.toContain("if not defined TF_SYSTEM32");
+    expect(batch).toContain('if defined TF_TRUSTED_SYSTEM32 set "TF_SYSTEM32=%TF_TRUSTED_SYSTEM32%"');
+    expect(batch).not.toMatch(/\r\npowershell\.exe /u);
     expect(batch).toContain(":RB_ENGINE_BEGIN");
     expect(batch).not.toContain("set /p");
     expect(batch.split("\r\n")).not.toContain("pause");
@@ -90,9 +115,52 @@ describe("generateBatch", () => {
   it("contains elevation, state, logging and reversible action wiring", () => {
     const batch = generateBatch(DEFAULT_PROJECT);
     const engine = decodeEngine(batch);
-    expect(batch).toContain("fltmc >nul 2>&1");
-    expect(decodeUtf16(buildElevationEncodedCommand())).toContain("-Verb RunAs");
-    expect(batch).toContain(".tweakforge-state");
+    const elevation = decodeUtf16(buildElevationEncodedCommand());
+    const elevatedBootstrap = buildElevatedBootstrapSource();
+    const trustedRuntime = buildTrustedRuntimeSource(DEFAULT_PROJECT.projectId);
+    expect(decodeElevatedBootstrap(batch)).toBe(elevatedBootstrap);
+    expect(decodeTrustedRuntime(batch)).toBe(trustedRuntime);
+    expect(batch).not.toContain("fltmc");
+    expect(elevation).toContain("-Verb RunAs");
+    expect(elevation).toContain("$bootstrapSource.Replace('__TF_SELF_TOKEN__'");
+    expect(elevation).not.toContain("$env:TF_SELF_SHA256");
+    expect(elevatedBootstrap).toContain("$env:TF_SELF_SHA256 = $expectedHash");
+    expect(elevatedBootstrap).toContain("Start-Process -FilePath $powershell");
+    const personalizedBootstrap = elevatedBootstrap
+      .replaceAll("__TF_SELF_TOKEN__", "QzpcVGVzdFx0b29sLmJhdA==")
+      .replaceAll("__TF_LANGUAGE__", "ja")
+      .replaceAll("__TF_HASH__", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+    expect(Buffer.from(personalizedBootstrap, "utf16le").toString("base64").length).toBeLessThan(30_001);
+    expect(trustedRuntime).toContain("[Environment+SpecialFolder]::CommonApplicationData");
+    expect(trustedRuntime).toContain("SetAccessRuleProtection($true, $false)");
+    expect(trustedRuntime).toContain("function Test-ProtectedDirectory");
+    expect(trustedRuntime).toContain("if ($rules.Count -ne 2) { return $false }");
+    expect(trustedRuntime).toContain("$security.GetOwner([Security.Principal.SecurityIdentifier]).Value");
+    expect(trustedRuntime).toContain("[IO.Directory]::CreateDirectory($Path, $security)");
+    expect(trustedRuntime).toContain("Protected directory is not trusted:");
+    expect(trustedRuntime).not.toContain("[IO.Directory]::SetAccessControl");
+    expect(trustedRuntime).toContain("Reset-ProtectedFiles $stateRoot $stateWasProtected");
+    expect(trustedRuntime).toContain("if (-not $Preserve) { [IO.File]::Delete($entry.FullName); continue }");
+    expect(trustedRuntime.indexOf("if (-not $Preserve)")).toBeLessThan(
+      trustedRuntime.indexOf("$content = [IO.File]::ReadAllBytes($entry.FullName)"),
+    );
+    expect(trustedRuntime.indexOf("$stateWasProtected = (Test-ProtectedDirectory $appRoot)")).toBeLessThan(
+      trustedRuntime.indexOf("Open-ProtectedDirectory $appRoot"),
+    );
+    expect(elevatedBootstrap).toContain("[IO.Directory]::CreateDirectory($Path, $security)");
+    expect(elevatedBootstrap).not.toContain("[IO.Directory]::SetAccessControl");
+    expect(elevatedBootstrap).toContain("Trusted script changed before execution.");
+    expect(trustedRuntime).toContain("Script changed during elevation.");
+    expect(trustedRuntime).toContain("Start-Process -FilePath $cmd");
+    for (const source of [elevation, elevatedBootstrap, trustedRuntime]) {
+      expect(source).not.toContain("Invoke-Expression");
+      expect(source).not.toContain("ScriptBlock");
+      expect(source).not.toContain("Invoke-WebRequest");
+    }
+    expect(batch).toContain('set "RB_STATE=%TF_STATE_ROOT%"');
+    expect(batch).toContain('set "RB_ENGINE=%TF_RUNTIME_ROOT%\\engine.ps1"');
+    expect(batch).not.toContain(".tweakforge-state");
+    expect(batch).not.toMatch(/(?:^|\r\n)(?:chcp|mode|choice|fltmc)(?:\s|$)/iu);
     expect(engine).toContain("Export-Clixml -LiteralPath $temporary");
     expect(engine).toContain("DoNotExpandEnvironmentNames");
     expect(engine).toContain("Assert-State $state $Entry");
@@ -142,11 +210,34 @@ describe("generateBatch", () => {
       "Start-BitsTransfer",
       "bcdedit",
       "sc.exe",
+      "netsh",
+      "schtasks",
+      "fsutil",
+      "bitsadmin",
+      "certutil",
     ]) {
       expect(engine).not.toContain(denied);
     }
     expect(engine).toContain("[ValidateSet('Apply','Restore','RestorePoint')]");
     expect(engine).toContain("[ValidatePattern('^[a-z][a-z0-9_]{2,47}$')]");
+  });
+
+  it("generates a typed reversible powercfg action without a generic command channel", () => {
+    const action = { ...createEmptyPowerPlanAction("en"), id: "power_plan_action" };
+    const batch = generateBatch({ ...DEFAULT_PROJECT, actions: [action] });
+    const engine = decodeEngine(batch);
+    expect(batch).toContain("[POWER PLAN]");
+    expect(batch).toContain(action.schemeGuid);
+    expect(engine).toContain("ActionKind='power-plan'");
+    expect(engine).toContain("Join-Path ([Environment]::SystemDirectory) 'powercfg.exe'");
+    expect(engine).toContain("Invoke-PowerCfg @('/getactivescheme')");
+    expect(engine).toContain("Invoke-PowerCfg @('/setactive', $Entry.SchemeGuid)");
+    expect(engine).toContain("Invoke-PowerCfg @('/setactive', $state.ActiveGuid)");
+    expect(engine.indexOf("$activeGuid = Get-ActivePowerPlanGuid")).toBeLessThan(
+      engine.indexOf("Invoke-PowerCfg @('/setactive', $Entry.SchemeGuid)"),
+    );
+    expect(engine).not.toContain("Invoke-Expression");
+    expect(engine).not.toContain("Invoke-WebRequest");
   });
 
   it("supports the full item limit with bounded physical lines and pagination", () => {

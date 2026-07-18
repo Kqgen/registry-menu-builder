@@ -3,9 +3,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PROJECT, DEFAULT_TWEAK } from "../domain/defaults.ts";
+import { createEmptyPowerPlanAction, DEFAULT_PROJECT, DEFAULT_TWEAK } from "../domain/defaults.ts";
 import type { RegistryProject } from "../domain/types.ts";
+import { buildElevatedBootstrapSource, buildElevationEncodedCommand } from "./elevatedBootstrap.ts";
 import { buildPowerShellEngine } from "./powershell.ts";
+import { buildTrustedRuntimeSource } from "./trustedRuntime.ts";
 
 function parseWithWindowsPowerShell(source: string): { readonly status: number | null; readonly output: string } {
   const parser = [
@@ -28,6 +30,19 @@ function parseWithWindowsPowerShell(source: string): { readonly status: number |
 }
 
 describe("PowerShell engine syntax", () => {
+  it("parses all protected elevation stages without executing them", () => {
+    const bootstrap = parseWithWindowsPowerShell(buildElevatedBootstrapSource());
+    expect(bootstrap.status, bootstrap.output).toBe(0);
+    const trusted = parseWithWindowsPowerShell(buildTrustedRuntimeSource(DEFAULT_PROJECT.projectId));
+    expect(trusted.status, trusted.output).toBe(0);
+    const elevationSource = Buffer.from(
+      buildElevationEncodedCommand(),
+      "base64",
+    ).toString("utf16le");
+    const elevation = parseWithWindowsPowerShell(elevationSource);
+    expect(elevation.status, elevation.output).toBe(0);
+  });
+
   it("parses the default generated engine without executing it", () => {
     const result = parseWithWindowsPowerShell(buildPowerShellEngine(DEFAULT_PROJECT));
     expect(result.status, result.output).toBe(0);
@@ -83,6 +98,15 @@ describe("PowerShell engine syntax", () => {
     expect(result.status, result.output).toBe(0);
   });
 
+  it("parses a mixed registry and power plan engine without executing it", () => {
+    const project: RegistryProject = {
+      ...DEFAULT_PROJECT,
+      actions: [{ ...createEmptyPowerPlanAction("en"), id: "power_plan_action" }],
+    };
+    const result = parseWithWindowsPowerShell(buildPowerShellEngine(project));
+    expect(result.status, result.output).toBe(0);
+  });
+
   it("handles a missing backup as a registry-free restore no-op", () => {
     const root = mkdtempSync(join(tmpdir(), "registry-menu-engine-"));
     try {
@@ -117,7 +141,43 @@ describe("PowerShell engine syntax", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
+
+  it("handles a missing power plan backup without invoking powercfg", () => {
+    const root = mkdtempSync(join(tmpdir(), "power-plan-engine-"));
+    try {
+      const action = { ...createEmptyPowerPlanAction("en"), id: "power_plan_action" };
+      const project = { ...DEFAULT_PROJECT, tweaks: [], actions: [action] };
+      const enginePath = join(root, "engine.ps1");
+      const logPath = join(root, "actions.log");
+      writeFileSync(enginePath, `\ufeff${buildPowerShellEngine(project)}`, "utf8");
+      const result = spawnSync(
+        "powershell.exe",
+        [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          enginePath,
+          "-Action",
+          "Restore",
+          "-TweakId",
+          action.id,
+        ],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+          env: { ...process.env, RB_STATE: root, RB_LOG: logPath },
+        },
+      );
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(readFileSync(logPath, "utf8")).toContain("\tRestore\tNO_BACKUP");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 15_000);
 
   it("rejects a snapshot bound to another tweak before registry access", () => {
     const root = mkdtempSync(join(tmpdir(), "registry-menu-engine-"));
@@ -169,5 +229,5 @@ describe("PowerShell engine syntax", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });

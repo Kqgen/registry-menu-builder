@@ -1,4 +1,5 @@
 import type { RegistryProject } from "../domain/types.ts";
+import { getBatchItems } from "./batchItems.ts";
 import { BATCH_COPY, BATCH_LOCALE_IDS, type BatchLocaleCopy } from "./batchLocale.ts";
 import {
   echo,
@@ -22,7 +23,7 @@ function buildLanguageSelection(width: number, showBanner: string): readonly str
     panelEcho("  [1]  日本語", width),
     panelEcho("  [2]  English", width),
     strongRuleEcho(width),
-    "choice /c 12 /n /m \"LANGUAGE / 言語 > \"",
+    "\"%TF_CHOICE%\" /c 12 /n /m \"LANGUAGE / 言語 > \"",
     "if errorlevel 2 goto language_en",
     "if errorlevel 1 goto language_ja",
     "goto language_select",
@@ -139,7 +140,7 @@ function actionHeader(
     panelEcho(`  ${title}`, width),
     panelEcho(`  ${description}`, width),
     strongRuleEcho(width),
-    `choice /c YN /n /m "${prompt}"`,
+    `"%TF_CHOICE%" /c YN /n /m "${prompt}"`,
     `if errorlevel 2 goto ${pageLabel(0)}`,
   ];
 }
@@ -160,7 +161,7 @@ function resultLines(
     ruleEcho(copy.sections.result, width),
     conditionalPanel('if "%RB_FAILED%"=="0"', success, width),
     conditionalPanel('if not "%RB_FAILED%"=="0"', failure, width),
-    panelEcho(fieldText(copy.fields.log, `.tweakforge-state\\${project.projectId}\\actions.log`), width),
+    panelEcho(fieldText(copy.fields.log, `GamingTweakForge\\State\\${project.projectId}\\actions.log (ProgramData)`), width),
     strongRuleEcho(width),
     "call :wait_for_return",
     `goto ${pageLabel(0)}`,
@@ -174,12 +175,13 @@ function buildBulkActions(
   showBanner: string,
   copy: BatchLocaleCopy,
 ): readonly string[] {
-  const applyCalls = project.tweaks.flatMap((_, index) => [
+  const items = getBatchItems(project);
+  const applyCalls = items.flatMap((_, index) => [
     `call :run_apply_${labelIndex(index)}`,
     "if errorlevel 1 set \"RB_FAILED=1\"",
   ]);
-  const restoreCalls = [...project.tweaks].reverse().flatMap((_, reverseIndex) => {
-    const index = project.tweaks.length - reverseIndex - 1;
+  const restoreCalls = [...items].reverse().flatMap((_, reverseIndex) => {
+    const index = items.length - reverseIndex - 1;
     return [
       `call :run_restore_${labelIndex(index)}`,
       "if errorlevel 1 set \"RB_FAILED=1\"",
@@ -220,7 +222,7 @@ function buildBulkActions(
       copy.messages.restorePointPrompt,
     ),
     "set \"RB_FAILED=0\"",
-    'powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%RB_ENGINE%" -Action RestorePoint -Language "%TF_LANG%"',
+    '"%TF_POWERSHELL%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%RB_ENGINE%" -Action RestorePoint -Language "%TF_LANG%"',
     "if errorlevel 1 set \"RB_FAILED=1\"",
     ...resultLines(copy, project, width, copy.messages.restorePointSuccess, copy.messages.restorePointFailure),
   ];

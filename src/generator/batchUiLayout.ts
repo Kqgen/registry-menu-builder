@@ -72,7 +72,7 @@ export interface ChoiceRoute {
 
 export function choiceDispatch(routes: readonly ChoiceRoute[], prompt: string): readonly string[] {
   const keys = routes.map((route) => route.key).join("");
-  const lines = [`choice /c ${keys} /n /m "${prompt}"`];
+  const lines = [`"%TF_CHOICE%" /c ${keys} /n /m "${prompt}"`];
   for (let index = routes.length - 1; index >= 0; index -= 1) {
     const route = routes[index];
     if (route !== undefined) {

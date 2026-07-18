@@ -1,6 +1,7 @@
 export function captureRenderedFocus(
   themeContainer: HTMLElement,
   tweakContainer: HTMLElement,
+  systemActionContainer?: HTMLElement,
 ): () => void {
   const active = document.activeElement;
   if (active instanceof HTMLInputElement && themeContainer.contains(active) && active.name === "theme") {
@@ -17,6 +18,16 @@ export function captureRenderedFocus(
     return () => {
       const replacement = [...tweakContainer.querySelectorAll<HTMLButtonElement>("button[data-action]")]
         .find((candidate) => candidate.dataset["action"] === action && candidate.dataset["tweakId"] === tweakId);
+      replacement?.focus({ preventScroll: true });
+    };
+  }
+  if (active instanceof HTMLButtonElement && systemActionContainer?.contains(active)) {
+    const action = active.dataset["action"];
+    const systemActionId = active.dataset["systemActionId"];
+    return () => {
+      const replacement = [...systemActionContainer.querySelectorAll<HTMLButtonElement>("button[data-action]")]
+        .find((candidate) => candidate.dataset["action"] === action
+          && candidate.dataset["systemActionId"] === systemActionId);
       replacement?.focus({ preventScroll: true });
     };
   }

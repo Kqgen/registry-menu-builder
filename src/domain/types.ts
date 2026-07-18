@@ -11,7 +11,9 @@ export const VALUE_TYPES = [
 export const RISK_LEVELS = ["low", "medium", "high"] as const;
 export const THEME_IDS = ["amber", "ice", "matrix", "paper"] as const;
 export const BANNER_STYLE_IDS = ["apex", "drift", "ghost", "umbra", "ember"] as const;
-export const MAX_TWEAKS = 1024;
+export const SYSTEM_ACTION_KINDS = ["power-plan"] as const;
+export const MAX_PROJECT_ITEMS = 1024;
+export const MAX_TWEAKS = MAX_PROJECT_ITEMS;
 export const MAX_PROJECT_JSON_BYTES = 16 * 1_048_576;
 
 export type RegistryHive = (typeof HIVES)[number];
@@ -20,6 +22,7 @@ export type RegistryValueType = (typeof VALUE_TYPES)[number];
 export type RiskLevel = (typeof RISK_LEVELS)[number];
 export type ThemeId = (typeof THEME_IDS)[number];
 export type BannerStyleId = (typeof BANNER_STYLE_IDS)[number];
+export type SystemActionKind = (typeof SYSTEM_ACTION_KINDS)[number];
 
 export interface RegistryTweak {
   readonly id: string;
@@ -35,8 +38,20 @@ export interface RegistryTweak {
   readonly risk: RiskLevel;
 }
 
+export interface PowerPlanAction {
+  readonly kind: "power-plan";
+  readonly id: string;
+  readonly label: string;
+  readonly group: string;
+  readonly description: string;
+  readonly schemeGuid: string;
+  readonly risk: RiskLevel;
+}
+
+export type SystemAction = PowerPlanAction;
+
 export interface RegistryProject {
-  readonly version: 1;
+  readonly version: 2;
   readonly projectId: string;
   readonly title: string;
   readonly bannerText: string;
@@ -44,6 +59,7 @@ export interface RegistryProject {
   readonly subtitle: string;
   readonly theme: ThemeId;
   readonly tweaks: readonly RegistryTweak[];
+  readonly actions: readonly SystemAction[];
 }
 
 export interface ValidationIssue {

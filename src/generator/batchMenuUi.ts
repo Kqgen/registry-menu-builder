@@ -1,4 +1,5 @@
 import type { RegistryProject } from "../domain/types.ts";
+import { getBatchItems, type BatchItem } from "./batchItems.ts";
 import { BATCH_COPY, BATCH_LOCALE_IDS, type BatchLocaleCopy } from "./batchLocale.ts";
 import {
   PAGE_SIZE,
@@ -22,7 +23,7 @@ function localizedPageLabel(copy: BatchLocaleCopy, index: number): string {
 
 function buildMenuDispatchers(project: RegistryProject): readonly string[] {
   const lines: string[] = [];
-  const pageCount = Math.ceil(project.tweaks.length / PAGE_SIZE);
+  const pageCount = Math.ceil(getBatchItems(project).length / PAGE_SIZE);
   for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
     lines.push(
       `:${pageLabel(pageIndex)}`,
@@ -41,10 +42,11 @@ function buildMenuPages(
   copy: BatchLocaleCopy,
 ): readonly string[] {
   const lines: string[] = [];
-  const pageCount = Math.ceil(project.tweaks.length / PAGE_SIZE);
+  const items = getBatchItems(project);
+  const pageCount = Math.ceil(items.length / PAGE_SIZE);
   for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
     const start = pageIndex * PAGE_SIZE;
-    const tweaks = project.tweaks.slice(start, start + PAGE_SIZE);
+    const pageItems = items.slice(start, start + PAGE_SIZE);
     lines.push(
       `:${localizedPageLabel(copy, pageIndex)}`,
       "cls",
@@ -53,16 +55,17 @@ function buildMenuPages(
       ruleEcho(copy.sections.profile, width),
       panelEcho(fieldText(copy.fields.tool, project.title), width),
       panelEcho(fieldText(copy.fields.description, project.subtitle), width),
-      panelEcho(fieldText(copy.fields.count, copy.readyText(project.tweaks.length)), width),
+      panelEcho(fieldText(copy.fields.count, copy.readyText(items.length)), width),
       panelEcho(fieldText(copy.fields.page, copy.pageText(pageIndex + 1, pageCount)), width),
       ruleEcho(copy.sections.tweaks, width),
     );
     const routes: ChoiceRoute[] = [];
-    tweaks.forEach((tweak, localIndex) => {
+    pageItems.forEach((item, localIndex) => {
       const absoluteIndex = start + localIndex;
       const key = String(localIndex + 1);
-      const risk = padConsoleText(`[${copy.risk[tweak.risk]}]`, 10);
-      lines.push(panelEcho(`  [${key}]  ${risk}${tweak.group} / ${tweak.label}`, width));
+      const risk = padConsoleText(`[${copy.risk[item.risk]}]`, 10);
+      const kind = padConsoleText(`[${copy.itemKind[item.kind]}]`, 16);
+      lines.push(panelEcho(`  [${key}]  ${risk}${kind}${item.group} / ${item.label}`, width));
       routes.push({ key, label: `detail_${labelIndex(absoluteIndex)}` });
     });
     lines.push(
@@ -94,12 +97,33 @@ function buildMenuPages(
 }
 
 function buildDetailDispatchers(project: RegistryProject): readonly string[] {
-  return project.tweaks.flatMap((_, index) => [
+  return getBatchItems(project).flatMap((_, index) => [
     `:detail_${labelIndex(index)}`,
     `if /i "%TF_LANG%"=="ja" goto detail_ja_${labelIndex(index)}`,
     `goto detail_en_${labelIndex(index)}`,
     "",
   ]);
+}
+
+function buildTargetLines(item: BatchItem, copy: BatchLocaleCopy, width: number): readonly string[] {
+  if (item.kind === "power-plan") {
+    return [
+      panelEcho(fieldText(copy.fields.kind, copy.itemKind[item.kind]), width),
+      panelEcho(fieldText(copy.fields.group, item.group), width),
+      panelEcho(fieldText(copy.fields.executable, "powercfg.exe"), width),
+      panelEcho(fieldText(copy.fields.scheme, item.action.schemeGuid), width),
+      panelEcho(fieldText(copy.fields.operation, "/setactive"), width),
+    ];
+  }
+  const tweak = item.tweak;
+  return [
+    panelEcho(fieldText(copy.fields.kind, copy.itemKind[item.kind]), width),
+    panelEcho(fieldText(copy.fields.group, tweak.group), width),
+    panelEcho(fieldText(copy.fields.key, `${tweak.hive}\\${tweak.keyPath}`), width),
+    panelEcho(fieldText(copy.fields.value, tweak.valueName || copy.messages.defaultValue), width),
+    panelEcho(fieldText(copy.fields.operation, `${copy.operation[tweak.operation]} / ${tweak.valueType}`), width),
+    panelEcho(fieldText(copy.fields.data, displayData(tweak, copy)), width),
+  ];
 }
 
 function buildDetailPages(
@@ -109,25 +133,22 @@ function buildDetailPages(
   copy: BatchLocaleCopy,
 ): readonly string[] {
   const lines: string[] = [];
-  project.tweaks.forEach((tweak, index) => {
+  const items = getBatchItems(project);
+  items.forEach((item, index) => {
     const pageIndex = Math.floor(index / PAGE_SIZE);
     lines.push(
       `:detail_${copy.id}_${labelIndex(index)}`,
       "cls",
       showBanner,
       echo(),
-      ruleEcho(`TWEAK ${labelIndex(index)} / ${project.tweaks.length.toString().padStart(3, "0")}`, width),
-      panelEcho(fieldText(copy.fields.name, tweak.label), width),
-      panelEcho(fieldText(copy.fields.description, tweak.description), width),
+      ruleEcho(`ITEM ${labelIndex(index)} / ${items.length.toString().padStart(3, "0")}`, width),
+      panelEcho(fieldText(copy.fields.name, item.label), width),
+      panelEcho(fieldText(copy.fields.description, item.description), width),
       ruleEcho(copy.sections.target, width),
-      panelEcho(fieldText(copy.fields.group, tweak.group), width),
-      panelEcho(fieldText(copy.fields.key, `${tweak.hive}\\${tweak.keyPath}`), width),
-      panelEcho(fieldText(copy.fields.value, tweak.valueName || copy.messages.defaultValue), width),
-      panelEcho(fieldText(copy.fields.operation, `${copy.operation[tweak.operation]} / ${tweak.valueType}`), width),
-      panelEcho(fieldText(copy.fields.data, displayData(tweak, copy)), width),
+      ...buildTargetLines(item, copy, width),
       ruleEcho(copy.sections.safety, width),
-      panelEcho(fieldText(copy.fields.risk, copy.risk[tweak.risk]), width),
-      panelEcho(`  ${copy.messages.backupNotice}`, width),
+      panelEcho(fieldText(copy.fields.risk, copy.risk[item.risk]), width),
+      panelEcho(`  ${item.kind === "registry" ? copy.messages.backupNotice : copy.messages.powerPlanBackupNotice}`, width),
       ruleEcho(copy.sections.actions, width),
       panelEcho(actionText("A", copy.actions.applyOne), width),
       panelEcho(actionText("R", copy.actions.restoreOne), width),
@@ -149,7 +170,7 @@ function buildDetailPages(
 }
 
 function buildDetailActions(project: RegistryProject): readonly string[] {
-  return project.tweaks.flatMap((_, index) => [
+  return getBatchItems(project).flatMap((_, index) => [
     `:detail_apply_${labelIndex(index)}`,
     `call :run_apply_${labelIndex(index)}`,
     "call :wait_for_return",

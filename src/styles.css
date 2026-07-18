@@ -276,6 +276,26 @@ button {
   text-align: right;
 }
 
+.section-heading-actions {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.subsection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.subsection-heading h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -537,6 +557,20 @@ button {
   padding: 2px 5px;
   color: #236d35;
   border: 1px solid currentColor;
+}
+
+.field[hidden] {
+  display: none;
+}
+
+.kind-pill {
+  padding: 2px 5px;
+  color: #285f8a;
+  border: 1px solid currentColor;
+}
+
+.system-action-card {
+  border-left: 4px solid #285f8a;
 }
 
 .tweak-card[data-risk="medium"] .risk-pill {

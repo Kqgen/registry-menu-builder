@@ -1,5 +1,6 @@
 import type {
   BannerStyleId,
+  SystemAction,
   RegistryProject,
   RegistryTweak,
   ThemeId,
@@ -46,5 +47,34 @@ export function removeTweak(
   return {
     ...project,
     tweaks: project.tweaks.filter((tweak) => tweak.id !== tweakId),
+  };
+}
+
+export function addSystemAction(
+  project: RegistryProject,
+  action: SystemAction,
+): RegistryProject {
+  return { ...project, actions: [...project.actions, action] };
+}
+
+export function updateSystemAction(
+  project: RegistryProject,
+  action: SystemAction,
+): RegistryProject {
+  return {
+    ...project,
+    actions: project.actions.map((candidate) =>
+      candidate.id === action.id ? action : candidate,
+    ),
+  };
+}
+
+export function removeSystemAction(
+  project: RegistryProject,
+  actionId: string,
+): RegistryProject {
+  return {
+    ...project,
+    actions: project.actions.filter((action) => action.id !== actionId),
   };
 }
